@@ -8,7 +8,6 @@ import {
 } from "lucide-react";
 import { Header } from "@/components/Header";
 import { HeroSection } from "@/components/HeroSection";
-import { ContactBar } from "@/components/ContactBar";
 import { MetricCard } from "@/components/MetricCard";
 import { PipelineCard } from "@/components/PipelineCard";
 import { InfrastructureTopology } from "@/components/InfrastructureTopology";
@@ -82,7 +81,6 @@ export default function Index() {
     <div className="min-h-screen bg-background">
       <Header />
       <HeroSection />
-      <ContactBar />
 
       {/* Metrics Section */}
       <section className="py-16 bg-secondary/30">
@@ -104,14 +102,14 @@ export default function Index() {
             <MetricCard
               title="Deployments"
               value="247"
+              subtitle="This month"
               icon={Rocket}
-              trend={{ value: 12, isPositive: true }}
             />
             <MetricCard
               title="Docker Images"
               value="18"
+              subtitle="In DockerHub"
               icon={Container}
-              trend={{ value: 3, isPositive: true }}
             />
             <MetricCard
               title="Active Pipelines"
@@ -122,8 +120,8 @@ export default function Index() {
             <MetricCard
               title="Success Rate"
               value="94.2%"
+              subtitle="Last 30 days"
               icon={CheckCircle}
-              trend={{ value: 2.1, isPositive: true }}
             />
           </div>
         </div>

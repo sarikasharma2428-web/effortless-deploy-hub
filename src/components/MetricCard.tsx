@@ -6,10 +6,6 @@ interface MetricCardProps {
   value: string | number;
   subtitle?: string;
   icon: LucideIcon;
-  trend?: {
-    value: number;
-    isPositive: boolean;
-  };
   className?: string;
 }
 
@@ -18,7 +14,6 @@ export function MetricCard({
   value,
   subtitle,
   icon: Icon,
-  trend,
   className,
 }: MetricCardProps) {
   return (
@@ -42,25 +37,11 @@ export function MetricCard({
       <p className="font-display text-3xl text-foreground tracking-wider mb-2">{value}</p>
       
       {/* Title */}
-      <p className="text-sm text-muted-foreground uppercase tracking-[0.15em] mb-1">{title}</p>
+      <p className="text-sm text-muted-foreground uppercase tracking-[0.15em]">{title}</p>
       
-      {/* Subtitle/Trend */}
-      {trend && (
-        <p className={cn(
-          "text-xs mt-2",
-          trend.isPositive ? "text-success" : "text-destructive"
-        )}>
-          {trend.isPositive ? "↑" : "↓"} {Math.abs(trend.value)}% this month
-        </p>
+      {subtitle && (
+        <p className="text-xs text-muted-foreground mt-2">{subtitle}</p>
       )}
-      {subtitle && !trend && (
-        <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
-      )}
-
-      {/* Read more link */}
-      <a href="#" className="inline-block mt-4 text-xs text-primary hover:text-primary/80 uppercase tracking-wider">
-        View Details →
-      </a>
     </div>
   );
 }
