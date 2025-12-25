@@ -10,29 +10,35 @@ interface NodeProps {
 
 function TopologyNode({ icon, label, status, details }: NodeProps) {
   return (
-    <div className="flex flex-col items-center p-4 bg-secondary/50 rounded-xl border border-border/50 hover:border-primary/30 transition-all duration-300 group cursor-pointer hover-lift">
-      <div
-        className={cn(
-          "p-3 rounded-xl mb-3 transition-all duration-300 group-hover:scale-110",
-          status === "healthy" && "bg-success/10 text-success",
-          status === "warning" && "bg-warning/10 text-warning",
-          status === "error" && "bg-destructive/10 text-destructive"
-        )}
-      >
+    <div className="flex flex-col items-center p-5 bg-card border border-border/30 group card-hover cursor-pointer">
+      {/* Top accent */}
+      <div className={cn(
+        "w-8 h-0.5 -mt-5 mb-4",
+        status === "healthy" && "bg-success",
+        status === "warning" && "bg-warning",
+        status === "error" && "bg-destructive"
+      )} />
+      
+      <div className={cn(
+        "p-4 border mb-3 transition-all group-hover:scale-110",
+        status === "healthy" && "border-success/30 text-success",
+        status === "warning" && "border-warning/30 text-warning",
+        status === "error" && "border-destructive/30 text-destructive"
+      )}>
         {icon}
       </div>
-      <span className="text-sm font-medium text-foreground">{label}</span>
+      
+      <span className="font-display text-xs tracking-[0.15em] text-foreground">{label.toUpperCase()}</span>
       {details && (
-        <span className="text-xs text-muted-foreground mt-1">{details}</span>
+        <span className="text-[10px] text-muted-foreground mt-1">{details}</span>
       )}
-      <div
-        className={cn(
-          "w-2 h-2 rounded-full mt-3 status-indicator",
-          status === "healthy" && "bg-success active",
-          status === "warning" && "bg-warning active",
-          status === "error" && "bg-destructive active"
-        )}
-      />
+      
+      <div className={cn(
+        "w-2 h-2 mt-3 status-indicator",
+        status === "healthy" && "bg-success active",
+        status === "warning" && "bg-warning active",
+        status === "error" && "bg-destructive active"
+      )} />
     </div>
   );
 }
@@ -42,46 +48,49 @@ export function InfrastructureTopology() {
     { icon: <Globe className="w-5 h-5" />, label: "GitHub", status: "healthy" as const, details: "Source" },
     { icon: <Server className="w-5 h-5" />, label: "Jenkins", status: "healthy" as const, details: "CI/CD" },
     { icon: <Container className="w-5 h-5" />, label: "DockerHub", status: "healthy" as const, details: "Registry" },
-    { icon: <Box className="w-5 h-5" />, label: "Minikube", status: "healthy" as const, details: "K8s Cluster" },
-    { icon: <Server className="w-5 h-5" />, label: "Services", status: "healthy" as const, details: "3 Pods" },
-    { icon: <Database className="w-5 h-5" />, label: "PostgreSQL", status: "healthy" as const, details: "Database" },
+    { icon: <Box className="w-5 h-5" />, label: "Minikube", status: "healthy" as const, details: "Cluster" },
+    { icon: <Database className="w-5 h-5" />, label: "Database", status: "healthy" as const, details: "PostgreSQL" },
   ];
 
   return (
-    <div className="bg-card border border-border/50 rounded-2xl p-6">
-      <h3 className="text-lg font-semibold text-foreground mb-6 flex items-center gap-3">
-        <div className="p-2 bg-primary/10 rounded-lg">
-          <Cpu className="w-5 h-5 text-primary" />
-        </div>
-        Infrastructure Topology
-      </h3>
-
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        {nodes.map((node, index) => (
-          <div key={node.label} className="flex items-center">
-            <TopologyNode {...node} />
-            {index < nodes.length - 1 && (
-              <ArrowRight className="w-4 h-4 text-muted-foreground mx-2 hidden lg:block" />
-            )}
+    <section className="py-16">
+      <div className="container mx-auto px-6">
+        {/* Section Title */}
+        <div className="text-center mb-12">
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <span className="text-gold text-xs">◆ ◆ ◆</span>
           </div>
-        ))}
-      </div>
+          <h2 className="font-display text-2xl md:text-3xl tracking-[0.15em] text-foreground mb-4">
+            INFRASTRUCTURE
+          </h2>
+          <p className="font-serif text-lg text-muted-foreground italic max-w-xl mx-auto">
+            Your complete DevOps pipeline topology at a glance
+          </p>
+        </div>
 
-      {/* Legend */}
-      <div className="mt-6 pt-4 border-t border-border/50 flex items-center justify-center gap-6">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="w-2.5 h-2.5 rounded-full bg-success" />
-          <span>Healthy</span>
+        {/* Nodes Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          {nodes.map((node) => (
+            <TopologyNode key={node.label} {...node} />
+          ))}
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="w-2.5 h-2.5 rounded-full bg-warning" />
-          <span>Warning</span>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="w-2.5 h-2.5 rounded-full bg-destructive" />
-          <span>Error</span>
+
+        {/* Legend */}
+        <div className="mt-8 flex items-center justify-center gap-8">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="w-3 h-3 bg-success" />
+            <span className="uppercase tracking-wider">Healthy</span>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="w-3 h-3 bg-warning" />
+            <span className="uppercase tracking-wider">Warning</span>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="w-3 h-3 bg-destructive" />
+            <span className="uppercase tracking-wider">Error</span>
+          </div>
         </div>
       </div>
-    </div>
+    </section>
   );
 }

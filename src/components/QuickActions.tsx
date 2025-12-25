@@ -1,4 +1,4 @@
-import { Play, RotateCcw, Pause, Settings, Download, FileCode } from "lucide-react";
+import { Play, RotateCcw, Settings, Download, FileCode } from "lucide-react";
 import { Button } from "./ui/button";
 
 interface QuickActionsProps {
@@ -7,42 +7,44 @@ interface QuickActionsProps {
 
 export function QuickActions({ onViewFiles }: QuickActionsProps) {
   const actions = [
-    { icon: Play, label: "Deploy Now", variant: "glow" as const },
+    { icon: Play, label: "Deploy", variant: "glow" as const },
     { icon: RotateCcw, label: "Rollback", variant: "outline" as const },
-    { icon: Pause, label: "Pause", variant: "outline" as const },
     { icon: Settings, label: "Configure", variant: "outline" as const },
-    { icon: Download, label: "Logs", variant: "outline" as const },
+    { icon: Download, label: "Export", variant: "outline" as const },
   ];
 
   return (
-    <div className="bg-card border border-border/50 rounded-2xl p-6">
-      <h3 className="text-lg font-semibold text-foreground mb-5">
-        Quick Actions
-      </h3>
+    <div className="bg-card border border-border/30 p-6">
+      {/* Title */}
+      <div className="text-center mb-6">
+        <h3 className="font-display text-lg tracking-[0.15em] text-foreground">
+          QUICK ACTIONS
+        </h3>
+      </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      {/* Actions Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         {actions.map(({ icon: Icon, label, variant }) => (
           <Button
             key={label}
             variant={variant}
-            className="flex flex-col gap-2 h-auto py-4 px-3"
+            className="flex flex-col gap-2 h-auto py-5"
           >
             <Icon className="w-5 h-5" />
-            <span className="text-xs font-medium">{label}</span>
+            <span className="text-xs tracking-wider uppercase">{label}</span>
           </Button>
         ))}
       </div>
 
-      <div className="mt-5 pt-5 border-t border-border/50">
-        <Button
-          variant="terminal"
-          className="w-full justify-start gap-3 h-12"
-          onClick={onViewFiles}
-        >
-          <FileCode className="w-5 h-5" />
-          <span>View DevOps Configuration Files</span>
-        </Button>
-      </div>
+      {/* Config Files Button */}
+      <Button
+        variant="terminal"
+        className="w-full justify-center gap-3 h-12 tracking-wider uppercase"
+        onClick={onViewFiles}
+      >
+        <FileCode className="w-5 h-5" />
+        <span>View Configuration Files</span>
+      </Button>
     </div>
   );
 }

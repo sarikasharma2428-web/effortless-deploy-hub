@@ -4,17 +4,18 @@ import {
   Container,
   GitBranch,
   CheckCircle,
-  Clock,
   Activity,
-  Zap,
 } from "lucide-react";
 import { Header } from "@/components/Header";
+import { HeroSection } from "@/components/HeroSection";
+import { ContactBar } from "@/components/ContactBar";
 import { MetricCard } from "@/components/MetricCard";
 import { PipelineCard } from "@/components/PipelineCard";
 import { InfrastructureTopology } from "@/components/InfrastructureTopology";
 import { TerminalOutput } from "@/components/TerminalOutput";
 import { QuickActions } from "@/components/QuickActions";
 import { ConfigFilesModal } from "@/components/ConfigFilesModal";
+import { Button } from "@/components/ui/button";
 
 const mockPipelines = [
   {
@@ -71,7 +72,6 @@ const mockLogs = [
   { timestamp: "14:34:12", level: "info" as const, message: "Pushing image to DockerHub..." },
   { timestamp: "14:34:44", level: "success" as const, message: "Image pushed: yourusername/autodeployx:v1.2.3" },
   { timestamp: "14:34:46", level: "info" as const, message: "Deploying to Minikube cluster..." },
-  { timestamp: "14:34:48", level: "info" as const, message: "kubectl set image deployment/autodeployx..." },
   { timestamp: "14:35:02", level: "success" as const, message: "Deployment rollout complete - 3/3 pods ready" },
 ];
 
@@ -80,96 +80,127 @@ export default function Index() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Background gradient */}
-      <div className="fixed inset-0 bg-[radial-gradient(ellipse_at_top,hsl(0_72%_51%/0.08),transparent_50%)] pointer-events-none" />
-      
       <Header />
+      <HeroSection />
+      <ContactBar />
 
-      <main className="relative container mx-auto px-6 py-8">
-        {/* Hero Section */}
-        <div className="mb-10">
-          <div className="flex items-center gap-2 mb-3">
-            <Zap className="w-5 h-5 text-primary" />
-            <span className="text-sm text-primary font-medium">Live Dashboard</span>
+      {/* Metrics Section */}
+      <section className="py-16 bg-secondary/30">
+        <div className="container mx-auto px-6">
+          {/* Section Title */}
+          <div className="text-center mb-12">
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <span className="text-gold text-xs">◆ ◆ ◆</span>
+            </div>
+            <h2 className="font-display text-2xl md:text-3xl tracking-[0.15em] text-foreground mb-4">
+              DEPLOYMENT METRICS
+            </h2>
+            <p className="font-serif text-lg text-muted-foreground italic">
+              Real-time statistics from your CI/CD pipelines
+            </p>
           </div>
-          <h2 className="text-3xl font-bold text-foreground mb-2 tracking-tight">
-            Pipeline Overview
-          </h2>
-          <p className="text-muted-foreground">
-            Monitor and manage your CI/CD pipelines with Minikube & DockerHub
-          </p>
-        </div>
 
-        {/* Metrics Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <MetricCard
-            title="Total Deployments"
-            value="247"
-            subtitle="This month"
-            icon={Rocket}
-            trend={{ value: 12, isPositive: true }}
-          />
-          <MetricCard
-            title="Docker Images"
-            value="18"
-            subtitle="In DockerHub"
-            icon={Container}
-            trend={{ value: 3, isPositive: true }}
-          />
-          <MetricCard
-            title="Active Pipelines"
-            value="5"
-            subtitle="Currently running"
-            icon={Activity}
-          />
-          <MetricCard
-            title="Success Rate"
-            value="94.2%"
-            subtitle="Last 30 days"
-            icon={CheckCircle}
-            trend={{ value: 2.1, isPositive: true }}
-          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <MetricCard
+              title="Deployments"
+              value="247"
+              icon={Rocket}
+              trend={{ value: 12, isPositive: true }}
+            />
+            <MetricCard
+              title="Docker Images"
+              value="18"
+              icon={Container}
+              trend={{ value: 3, isPositive: true }}
+            />
+            <MetricCard
+              title="Active Pipelines"
+              value="5"
+              subtitle="Currently running"
+              icon={Activity}
+            />
+            <MetricCard
+              title="Success Rate"
+              value="94.2%"
+              icon={CheckCircle}
+              trend={{ value: 2.1, isPositive: true }}
+            />
+          </div>
         </div>
+      </section>
 
-        {/* Quick Actions */}
-        <div className="mb-8">
-          <QuickActions onViewFiles={() => setShowConfigFiles(true)} />
-        </div>
+      {/* Infrastructure */}
+      <InfrastructureTopology />
 
-        {/* Infrastructure Topology */}
-        <div className="mb-8">
-          <InfrastructureTopology />
-        </div>
+      {/* Pipelines & Logs Section */}
+      <section className="py-16 bg-secondary/30">
+        <div className="container mx-auto px-6">
+          {/* Section Title */}
+          <div className="text-center mb-12">
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <span className="text-gold text-xs">◆ ◆ ◆</span>
+            </div>
+            <h2 className="font-display text-2xl md:text-3xl tracking-[0.15em] text-foreground mb-4">
+              PIPELINE ACTIVITY
+            </h2>
+            <p className="font-serif text-lg text-muted-foreground italic">
+              Monitor your builds, tests, and deployments in real-time
+            </p>
+          </div>
 
-        {/* Two Column Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Pipelines */}
-          <div>
-            <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-3">
-              <div className="p-2 bg-primary/10 rounded-lg">
-                <GitBranch className="w-4 h-4 text-primary" />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Pipelines */}
+            <div>
+              <div className="flex items-center gap-3 mb-6">
+                <GitBranch className="w-5 h-5 text-primary" />
+                <h3 className="font-display text-sm tracking-[0.15em] text-foreground">
+                  RECENT PIPELINES
+                </h3>
               </div>
-              Recent Pipelines
-            </h3>
-            <div className="space-y-4">
-              {mockPipelines.map((pipeline) => (
-                <PipelineCard key={pipeline.name + pipeline.commit} {...pipeline} />
-              ))}
+              <div className="space-y-4">
+                {mockPipelines.map((pipeline) => (
+                  <PipelineCard key={pipeline.name + pipeline.commit} {...pipeline} />
+                ))}
+              </div>
+            </div>
+
+            {/* Logs & Actions */}
+            <div className="space-y-6">
+              <div>
+                <div className="flex items-center gap-3 mb-6">
+                  <Activity className="w-5 h-5 text-primary" />
+                  <h3 className="font-display text-sm tracking-[0.15em] text-foreground">
+                    LIVE LOGS
+                  </h3>
+                </div>
+                <TerminalOutput logs={mockLogs} />
+              </div>
+
+              <QuickActions onViewFiles={() => setShowConfigFiles(true)} />
             </div>
           </div>
-
-          {/* Logs */}
-          <div>
-            <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-3">
-              <div className="p-2 bg-primary/10 rounded-lg">
-                <Clock className="w-4 h-4 text-primary" />
-              </div>
-              Live Deployment Logs
-            </h3>
-            <TerminalOutput logs={mockLogs} />
-          </div>
         </div>
-      </main>
+      </section>
+
+      {/* CTA Section */}
+      <section className="py-16 border-t border-border/30">
+        <div className="container mx-auto px-6 text-center">
+          <div className="flex items-center justify-center gap-3 mb-6">
+            <span className="w-12 h-px bg-gold/50" />
+            <span className="text-gold text-xs">◆</span>
+            <span className="w-12 h-px bg-gold/50" />
+          </div>
+          <h2 className="font-display text-xl md:text-2xl tracking-[0.15em] text-foreground mb-4">
+            READY TO AUTOMATE?
+          </h2>
+          <p className="text-muted-foreground mb-8 max-w-md mx-auto">
+            Download all configuration files and start deploying your applications today.
+          </p>
+          <Button variant="glow" size="lg" onClick={() => setShowConfigFiles(true)} className="tracking-[0.15em]">
+            GET STARTED
+          </Button>
+        </div>
+      </section>
 
       {/* Config Files Modal */}
       <ConfigFilesModal

@@ -24,41 +24,43 @@ export function MetricCard({
   return (
     <div
       className={cn(
-        "relative overflow-hidden bg-card border border-border/50 rounded-2xl p-6 group hover-lift",
+        "relative bg-card border border-border/30 p-6 text-center group card-hover",
         className
       )}
     >
-      {/* Subtle gradient overlay */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-      
-      {/* Corner accent */}
-      <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-primary/10 to-transparent rounded-bl-full" />
+      {/* Top border accent */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-16 h-0.5 bg-primary" />
 
-      <div className="relative z-10">
-        <div className="flex items-start justify-between mb-4">
-          <div className="p-3 bg-secondary rounded-xl border border-border/50 group-hover:border-primary/30 transition-colors">
-            <Icon className="w-5 h-5 text-primary" />
-          </div>
-          {trend && (
-            <span
-              className={cn(
-                "text-xs font-semibold px-2.5 py-1 rounded-full",
-                trend.isPositive
-                  ? "bg-success/15 text-success"
-                  : "bg-destructive/15 text-destructive"
-              )}
-            >
-              {trend.isPositive ? "↑" : "↓"} {Math.abs(trend.value)}%
-            </span>
-          )}
+      {/* Icon */}
+      <div className="flex justify-center mb-4">
+        <div className="p-4 border border-border/50 group-hover:border-primary/50 transition-colors">
+          <Icon className="w-6 h-6 text-primary" />
         </div>
-
-        <p className="text-sm text-muted-foreground mb-1">{title}</p>
-        <p className="text-3xl font-bold text-foreground tracking-tight">{value}</p>
-        {subtitle && (
-          <p className="text-xs text-muted-foreground mt-2">{subtitle}</p>
-        )}
       </div>
+
+      {/* Value */}
+      <p className="font-display text-3xl text-foreground tracking-wider mb-2">{value}</p>
+      
+      {/* Title */}
+      <p className="text-sm text-muted-foreground uppercase tracking-[0.15em] mb-1">{title}</p>
+      
+      {/* Subtitle/Trend */}
+      {trend && (
+        <p className={cn(
+          "text-xs mt-2",
+          trend.isPositive ? "text-success" : "text-destructive"
+        )}>
+          {trend.isPositive ? "↑" : "↓"} {Math.abs(trend.value)}% this month
+        </p>
+      )}
+      {subtitle && !trend && (
+        <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
+      )}
+
+      {/* Read more link */}
+      <a href="#" className="inline-block mt-4 text-xs text-primary hover:text-primary/80 uppercase tracking-wider">
+        View Details →
+      </a>
     </div>
   );
 }
