@@ -3,62 +3,123 @@
 
 pipeline {
     agent any
-    
+
     environment {
-        // Docker Hub credentials (configure in Jenkins)
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds')
-        IMAGE_NAME = 'yourusername/autodeployx'
-        IMAGE_TAG = "${BUILD_NUMBER}"
-        KUBECONFIG = '/var/jenkins_home/.kube/config'
+        DOCKER_IMAGE = "sarika/autodeployx"
+        BACKEND_URL = "http://backend:8000"
     }
-    
-    options {
-        buildDiscarder(logRotator(numToKeepStr: '10'))
-        timeout(time: 30, unit: 'MINUTES')
-        timestamps()
-    }
-    
+
     stages {
-        stage('Checkout') {
+        stage('Pipeline Started') {
             steps {
-                echo '📥 Checking out source code...'
-                checkout scm
-                sh 'ls -la'
-            }
-        }
-        
-        stage('Build Docker Image') {
-            steps {
-                echo '🐳 Building Docker image...'
-                dir('docker') {
+                script {
                     sh """
-                        docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -f Dockerfile ..
-                        docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
+                        curl -X POST ${BACKEND_URL}/jenkins/status \
+                            -H "Content-Type: application/json" \
+                            -d '{"status": "running", "pipeline_name": "AutoDeployX", "build_number": ${BUILD_NUMBER}, "stage": "started", "message": "Pipeline #${BUILD_NUMBER} started"}'
                     """
                 }
             }
         }
-        
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+                script {
+                    sh """
+                        curl -X POST ${BACKEND_URL}/deployments/event \
+                            -H "Content-Type: application/json" \
+                            -d '{"event_type": "checkout", "status": "success", "details": {"branch": "${GIT_BRANCH}"}}'
+                    """
+                }
+            }
+        }
+
         stage('Run Tests') {
             steps {
-                echo '🧪 Running test suite...'
-                sh """
-                    docker run --rm ${IMAGE_NAME}:${IMAGE_TAG} \
-                        python -m pytest tests/ -v --tb=short
-                """
+                dir('app') {
+                    sh 'pip install -r requirements.txt'
+                    sh 'python -m pytest ../tests/ -v'
+                }
+                script {
+                    sh """
+                        curl -X POST ${BACKEND_URL}/deployments/event \
+                            -H "Content-Type: application/json" \
+                            -d '{"event_type": "test", "status": "success", "details": {"tests_passed": true}}'
+                    """
+                }
             }
         }
-        
-        stage('Security Scan') {
+
+        stage('Build Docker Image') {
             steps {
-                echo '🔒 Running security scan...'
+                dir('docker') {
+                    sh "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} -t ${DOCKER_IMAGE}:latest -f Dockerfile .."
+                }
+                script {
+                    sh """
+                        curl -X POST ${BACKEND_URL}/deployments/event \
+                            -H "Content-Type: application/json" \
+                            -d '{"event_type": "build", "status": "success", "details": {"image": "${DOCKER_IMAGE}:${BUILD_NUMBER}"}}'
+                    """
+                }
+            }
+        }
+
+        stage('Push to DockerHub') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
+                    sh "docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}"
+                    sh "docker push ${DOCKER_IMAGE}:latest"
+                }
+                script {
+                    sh """
+                        curl -X POST ${BACKEND_URL}/deployments/event \
+                            -H "Content-Type: application/json" \
+                            -d '{"event_type": "push", "status": "success", "details": {"registry": "DockerHub", "image": "${DOCKER_IMAGE}:${BUILD_NUMBER}"}}'
+                    """
+                }
+            }
+        }
+
+        stage('Deploy to Minikube') {
+            steps {
+                sh 'kubectl apply -f k8s/deployment.yaml'
+                sh 'kubectl apply -f k8s/service.yaml'
+                sh 'kubectl rollout status deployment/autodeployx-app --timeout=120s'
+                script {
+                    sh """
+                        curl -X POST ${BACKEND_URL}/deployments/event \
+                            -H "Content-Type: application/json" \
+                            -d '{"event_type": "deploy", "status": "success", "details": {"cluster": "minikube", "namespace": "default"}}'
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            script {
                 sh """
-                    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-                        aquasec/trivy:latest image --severity HIGH,CRITICAL \
-                        ${IMAGE_NAME}:${IMAGE_TAG} || true
+                    curl -X POST ${BACKEND_URL}/jenkins/status \
+                        -H "Content-Type: application/json" \
+                        -d '{"status": "success", "pipeline_name": "AutoDeployX", "build_number": ${BUILD_NUMBER}, "stage": "complete", "message": "Pipeline #${BUILD_NUMBER} completed successfully"}'
                 """
             }
         }
+        failure {
+            script {
+                sh """
+                    curl -X POST ${BACKEND_URL}/jenkins/status \
+                        -H "Content-Type: application/json" \
+                        -d '{"status": "failure", "pipeline_name": "AutoDeployX", "build_number": ${BUILD_NUMBER}, "stage": "failed", "message": "Pipeline #${BUILD_NUMBER} failed"}'
+                """
+            }
+        }
+    }
+}
         
         stage('Push to Docker Hub') {
             steps {

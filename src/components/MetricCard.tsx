@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { LucideIcon } from "lucide-react";
+import { LucideIcon, Loader2, WifiOff } from "lucide-react";
 
 interface MetricCardProps {
   title: string;
@@ -7,6 +7,8 @@ interface MetricCardProps {
   subtitle?: string;
   icon: LucideIcon;
   className?: string;
+  loading?: boolean;
+  disconnected?: boolean;
 }
 
 export function MetricCard({
@@ -15,26 +17,46 @@ export function MetricCard({
   subtitle,
   icon: Icon,
   className,
+  loading = false,
+  disconnected = false,
 }: MetricCardProps) {
   return (
     <div
       className={cn(
         "relative bg-card border border-border/30 p-6 text-center group card-hover",
+        disconnected && "opacity-60",
         className
       )}
     >
       {/* Top border accent */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-16 h-0.5 bg-primary" />
 
+      {/* Connection status indicator */}
+      {disconnected && (
+        <div className="absolute top-2 right-2">
+          <WifiOff className="w-4 h-4 text-destructive" />
+        </div>
+      )}
+
       {/* Icon */}
       <div className="flex justify-center mb-4">
         <div className="p-4 border border-border/50 group-hover:border-primary/50 transition-colors">
-          <Icon className="w-6 h-6 text-primary" />
+          {loading ? (
+            <Loader2 className="w-6 h-6 text-primary animate-spin" />
+          ) : (
+            <Icon className="w-6 h-6 text-primary" />
+          )}
         </div>
       </div>
 
       {/* Value */}
-      <p className="font-display text-3xl text-foreground tracking-wider mb-2">{value}</p>
+      <p className="font-display text-3xl text-foreground tracking-wider mb-2">
+        {loading ? (
+          <span className="text-muted-foreground">...</span>
+        ) : (
+          value
+        )}
+      </p>
       
       {/* Title */}
       <p className="text-sm text-muted-foreground uppercase tracking-[0.15em]">{title}</p>
