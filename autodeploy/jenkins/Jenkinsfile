@@ -1,0 +1,125 @@
+// AutoDeployX Jenkins Pipeline
+// CI/CD: Build → Test → Push → Deploy
+
+pipeline {
+    agent any
+    
+    environment {
+        // Docker Hub credentials (configure in Jenkins)
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds')
+        IMAGE_NAME = 'yourusername/autodeployx'
+        IMAGE_TAG = "${BUILD_NUMBER}"
+        KUBECONFIG = '/var/jenkins_home/.kube/config'
+    }
+    
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 30, unit: 'MINUTES')
+        timestamps()
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo '📥 Checking out source code...'
+                checkout scm
+                sh 'ls -la'
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                echo '🐳 Building Docker image...'
+                dir('docker') {
+                    sh """
+                        docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -f Dockerfile ..
+                        docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
+                    """
+                }
+            }
+        }
+        
+        stage('Run Tests') {
+            steps {
+                echo '🧪 Running test suite...'
+                sh """
+                    docker run --rm ${IMAGE_NAME}:${IMAGE_TAG} \
+                        python -m pytest tests/ -v --tb=short
+                """
+            }
+        }
+        
+        stage('Security Scan') {
+            steps {
+                echo '🔒 Running security scan...'
+                sh """
+                    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+                        aquasec/trivy:latest image --severity HIGH,CRITICAL \
+                        ${IMAGE_NAME}:${IMAGE_TAG} || true
+                """
+            }
+        }
+        
+        stage('Push to Docker Hub') {
+            steps {
+                echo '📤 Pushing to Docker Hub...'
+                sh """
+                    echo \$DOCKERHUB_CREDENTIALS_PSW | docker login -u \$DOCKERHUB_CREDENTIALS_USR --password-stdin
+                    docker push ${IMAGE_NAME}:${IMAGE_TAG}
+                    docker push ${IMAGE_NAME}:latest
+                """
+            }
+        }
+        
+        stage('Deploy to Minikube') {
+            steps {
+                echo '☸️ Deploying to Minikube...'
+                sh """
+                    # Update deployment with new image
+                    kubectl set image deployment/autodeployx \
+                        autodeployx=${IMAGE_NAME}:${IMAGE_TAG} \
+                        -n autodeployx --record
+                    
+                    # Wait for rollout
+                    kubectl rollout status deployment/autodeployx \
+                        -n autodeployx --timeout=300s
+                    
+                    # Verify pods are running
+                    kubectl get pods -n autodeployx -l app=autodeployx
+                """
+            }
+        }
+        
+        stage('Smoke Test') {
+            steps {
+                echo '🔥 Running smoke tests...'
+                sh """
+                    # Get service URL
+                    SERVICE_URL=\$(minikube service autodeployx-service -n autodeployx --url)
+                    
+                    # Test health endpoint
+                    curl -f \${SERVICE_URL}/health/ || exit 1
+                    
+                    echo "✅ Smoke tests passed!"
+                """
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo '🧹 Cleaning up...'
+            sh 'docker logout || true'
+            cleanWs()
+        }
+        success {
+            echo '🎉 Pipeline completed successfully!'
+            // Slack notification (if configured)
+            // slackSend(color: 'good', message: "Build #${BUILD_NUMBER} succeeded!")
+        }
+        failure {
+            echo '❌ Pipeline failed!'
+            // slackSend(color: 'danger', message: "Build #${BUILD_NUMBER} failed!")
+        }
+    }
+}

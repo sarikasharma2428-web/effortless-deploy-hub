@@ -1,0 +1,90 @@
+# AutoDeployX Docker Compose
+# Local multi-container development setup
+
+version: '3.8'
+
+services:
+  # Main Application
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: autodeployx-app
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://autodeployx:secretpassword@db:5432/autodeployx
+      - REDIS_URL=redis://redis:6379/0
+      - ENVIRONMENT=development
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - autodeployx-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: autodeployx-db
+    environment:
+      POSTGRES_USER: autodeployx
+      POSTGRES_PASSWORD: secretpassword
+      POSTGRES_DB: autodeployx
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - autodeployx-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autodeployx"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: autodeployx-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - autodeployx-network
+    restart: unless-stopped
+
+  # Jenkins CI/CD (Local)
+  jenkins:
+    image: jenkins/jenkins:lts
+    container_name: autodeployx-jenkins
+    privileged: true
+    user: root
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - autodeployx-network
+    restart: unless-stopped
+
+networks:
+  autodeployx-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  jenkins_home:
