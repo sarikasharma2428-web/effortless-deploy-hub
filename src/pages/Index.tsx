@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Rocket,
   Container,
@@ -14,68 +14,62 @@ import { InfrastructureTopology } from "@/components/InfrastructureTopology";
 import { TerminalOutput } from "@/components/TerminalOutput";
 import { QuickActions } from "@/components/QuickActions";
 import { ConfigFilesModal } from "@/components/ConfigFilesModal";
+import { ConnectionStatus } from "@/components/ConnectionStatus";
 import { Button } from "@/components/ui/button";
+import { useMetrics, useLogs, usePipelines } from "@/hooks/useMetrics";
 
-const mockPipelines = [
+// Fallback data when backend is not connected
+const fallbackPipelines = [
   {
     name: "autodeployx-backend",
     branch: "main",
     commit: "a3f2d1c",
     author: "sarika-03",
     stages: [
-      { name: "Checkout", status: "success" as const, duration: "2s" },
-      { name: "Build", status: "success" as const, duration: "45s" },
-      { name: "Test", status: "success" as const, duration: "1m 23s" },
-      { name: "Push", status: "success" as const, duration: "32s" },
-      { name: "Deploy", status: "running" as const },
-    ],
-    startedAt: "2 minutes ago",
-  },
-  {
-    name: "autodeployx-frontend",
-    branch: "feature/dashboard",
-    commit: "b7e4f2a",
-    author: "dev-team",
-    stages: [
-      { name: "Checkout", status: "success" as const, duration: "1s" },
-      { name: "Build", status: "success" as const, duration: "1m 12s" },
-      { name: "Test", status: "failed" as const, duration: "45s" },
+      { name: "Checkout", status: "pending" as const },
+      { name: "Build", status: "pending" as const },
+      { name: "Test", status: "pending" as const },
       { name: "Push", status: "pending" as const },
       { name: "Deploy", status: "pending" as const },
     ],
-    startedAt: "15 minutes ago",
+    startedAt: "Waiting...",
   },
-  {
-    name: "database-migrations",
-    branch: "main",
-    commit: "c9d8e7f",
-    author: "dba-team",
-    stages: [
-      { name: "Checkout", status: "success" as const, duration: "1s" },
-      { name: "Validate", status: "success" as const, duration: "5s" },
-      { name: "Migrate", status: "success" as const, duration: "12s" },
-      { name: "Verify", status: "success" as const, duration: "3s" },
-    ],
-    startedAt: "1 hour ago",
-  },
-];
-
-const mockLogs = [
-  { timestamp: "14:32:05", level: "info" as const, message: "Starting deployment pipeline..." },
-  { timestamp: "14:32:06", level: "info" as const, message: "Pulling latest code from GitHub..." },
-  { timestamp: "14:32:08", level: "success" as const, message: "Code checkout complete" },
-  { timestamp: "14:32:10", level: "info" as const, message: "Building Docker image: autodeployx:v1.2.3" },
-  { timestamp: "14:32:45", level: "success" as const, message: "Docker image built successfully" },
-  { timestamp: "14:32:47", level: "info" as const, message: "Running test suite..." },
-  { timestamp: "14:34:10", level: "success" as const, message: "All 47 tests passed" },
-  { timestamp: "14:34:12", level: "info" as const, message: "Pushing image to DockerHub..." },
-  { timestamp: "14:34:44", level: "success" as const, message: "Image pushed: yourusername/autodeployx:v1.2.3" },
-  { timestamp: "14:34:46", level: "info" as const, message: "Deploying to Minikube cluster..." },
-  { timestamp: "14:35:02", level: "success" as const, message: "Deployment rollout complete - 3/3 pods ready" },
 ];
 
 export default function Index() {
   const [showConfigFiles, setShowConfigFiles] = useState(false);
+  
+  // Real-time data hooks with polling
+  const { metrics, loading: metricsLoading, isConnected, refetch: refetchMetrics } = useMetrics(5000);
+  const { logs, loading: logsLoading } = useLogs(3000, 20);
+  const { pipelines: pipelineBuilds } = usePipelines(5000, 10);
+
+  // Transform pipeline builds to display format
+  const displayPipelines = useMemo(() => {
+    if (!isConnected || pipelineBuilds.length === 0) {
+      return fallbackPipelines;
+    }
+
+    return pipelineBuilds.slice(0, 3).map((build) => ({
+      name: build.pipeline_name,
+      branch: "main",
+      commit: `#${build.build_number}`,
+      author: "jenkins",
+      stages: [
+        { name: "Checkout", status: build.stage === "checkout" ? "running" as const : build.status === "success" ? "success" as const : "pending" as const },
+        { name: "Build", status: build.stage === "build" ? "running" as const : build.status === "success" ? "success" as const : "pending" as const },
+        { name: "Test", status: build.stage === "test" ? "running" as const : build.status === "success" ? "success" as const : "pending" as const },
+        { name: "Push", status: build.stage === "push" ? "running" as const : build.status === "success" ? "success" as const : "pending" as const },
+        { name: "Deploy", status: build.stage === "complete" ? "success" as const : build.stage === "failed" ? "failed" as const : build.status === "running" ? "running" as const : "pending" as const },
+      ],
+      startedAt: new Date(build.timestamp).toLocaleTimeString(),
+    }));
+  }, [isConnected, pipelineBuilds]);
+
+  // Get last updated time
+  const lastUpdated = metrics?.timestamp 
+    ? new Date(metrics.timestamp).toLocaleTimeString()
+    : undefined;
 
   return (
     <div className="min-h-screen bg-background">
@@ -86,7 +80,7 @@ export default function Index() {
       <section className="py-16 bg-secondary/30">
         <div className="container mx-auto px-6">
           {/* Section Title */}
-          <div className="text-center mb-12">
+          <div className="text-center mb-8">
             <div className="flex items-center justify-center gap-3 mb-4">
               <span className="text-gold text-xs">◆ ◆ ◆</span>
             </div>
@@ -98,30 +92,47 @@ export default function Index() {
             </p>
           </div>
 
+          {/* Connection Status */}
+          <div className="flex justify-center mb-8">
+            <ConnectionStatus
+              isConnected={isConnected}
+              lastUpdated={lastUpdated}
+              onRefresh={refetchMetrics}
+            />
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <MetricCard
               title="Deployments"
-              value="247"
+              value={metrics?.deployments.total ?? 0}
               subtitle="This month"
               icon={Rocket}
+              loading={metricsLoading}
+              disconnected={!isConnected}
             />
             <MetricCard
               title="Docker Images"
-              value="18"
+              value={metrics?.docker_images.count ?? 0}
               subtitle="In DockerHub"
               icon={Container}
+              loading={metricsLoading}
+              disconnected={!isConnected}
             />
             <MetricCard
               title="Active Pipelines"
-              value="5"
+              value={metrics?.pipelines.active ?? 0}
               subtitle="Currently running"
               icon={Activity}
+              loading={metricsLoading}
+              disconnected={!isConnected}
             />
             <MetricCard
               title="Success Rate"
-              value="94.2%"
+              value={`${metrics?.success_rate.rate ?? 0}%`}
               subtitle="Last 30 days"
               icon={CheckCircle}
+              loading={metricsLoading}
+              disconnected={!isConnected}
             />
           </div>
         </div>
@@ -156,8 +167,8 @@ export default function Index() {
                 </h3>
               </div>
               <div className="space-y-4">
-                {mockPipelines.map((pipeline) => (
-                  <PipelineCard key={pipeline.name + pipeline.commit} {...pipeline} />
+                {displayPipelines.map((pipeline, index) => (
+                  <PipelineCard key={`${pipeline.name}-${pipeline.commit}-${index}`} {...pipeline} />
                 ))}
               </div>
             </div>
@@ -171,7 +182,11 @@ export default function Index() {
                     LIVE LOGS
                   </h3>
                 </div>
-                <TerminalOutput logs={mockLogs} />
+                <TerminalOutput 
+                  logs={logs} 
+                  loading={logsLoading}
+                  disconnected={!isConnected}
+                />
               </div>
 
               <QuickActions onViewFiles={() => setShowConfigFiles(true)} />
