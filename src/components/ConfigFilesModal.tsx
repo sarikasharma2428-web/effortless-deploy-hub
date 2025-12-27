@@ -571,7 +571,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://autodeployx:secretpassword@db:5432/autodeployx
+      - DATABASE_URL=postgresql://autodeployx:\${DB_PASSWORD}@db:5432/autodeployx
       - REDIS_URL=redis://redis:6379/0
       - ENVIRONMENT=development
     depends_on:
@@ -594,7 +594,7 @@ services:
     container_name: autodeployx-db
     environment:
       POSTGRES_USER: autodeployx
-      POSTGRES_PASSWORD: secretpassword
+      POSTGRES_PASSWORD: \${DB_PASSWORD}  # Set via .env file
       POSTGRES_DB: autodeployx
     volumes:
       - postgres_data:/var/lib/postgresql/data

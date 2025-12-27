@@ -40,6 +40,8 @@ data:
 
 ---
 # Secret for sensitive data
+# NOTE: In production, use kubectl create secret or external secrets manager
+# DO NOT commit actual secrets to git - use placeholders
 apiVersion: v1
 kind: Secret
 metadata:
@@ -47,7 +49,8 @@ metadata:
   namespace: autodeployx
 type: Opaque
 stringData:
-  database-url: "postgresql://autodeployx:secretpassword@postgres:5432/autodeployx"
+  # Replace these placeholders with actual values during deployment
+  database-url: "postgresql://autodeployx:${DB_PASSWORD}@postgres:5432/autodeployx"
   redis-url: "redis://redis:6379/0"
 
 ---
