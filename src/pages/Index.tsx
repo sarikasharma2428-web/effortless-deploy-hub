@@ -18,6 +18,7 @@ import { TerminalOutput } from "@/components/TerminalOutput";
 import { QuickActions } from "@/components/QuickActions";
 import { ConfigFilesModal } from "@/components/ConfigFilesModal";
 import { ConnectionStatus } from "@/components/ConnectionStatus";
+import { CredentialsWarning } from "@/components/CredentialsWarning";
 import { Button } from "@/components/ui/button";
 import { PipelineStatusCard } from "@/components/dashboard/PipelineStatusCard";
 import { DockerSection } from "@/components/dashboard/DockerSection";
@@ -32,6 +33,7 @@ import {
   useHistoryStats,
 } from "@/hooks/useMetrics";
 import { useAutoDeployWebSocket } from "@/hooks/useWebSocket";
+
 
 // Fallback data when backend is not connected
 const fallbackPipeline = {
@@ -151,6 +153,9 @@ export default function Index() {
       {/* Metrics Section */}
       <section className="py-16 bg-secondary/30">
         <div className="container mx-auto px-6">
+          {/* Credentials Warning */}
+          <CredentialsWarning />
+
           {/* Section Title */}
           <div className="text-center mb-8">
             <div className="flex items-center justify-center gap-3 mb-4">

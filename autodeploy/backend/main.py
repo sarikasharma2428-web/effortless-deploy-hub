@@ -320,7 +320,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 # =============================================
-# HEALTH CHECK
+# HEALTH CHECK & CREDENTIALS STATUS
 # =============================================
 
 @app.get("/health")
@@ -369,6 +369,100 @@ async def health_check():
             }
         },
         "timestamp": datetime.now().isoformat()
+    }
+
+
+@app.get("/credentials/status")
+async def get_credentials_status():
+    """
+    Check all required credentials and show what's missing.
+    Dashboard will show warnings for missing credentials.
+    """
+    
+    # Define required credentials for each system
+    credentials = {
+        "dockerhub": {
+            "DOCKERHUB_USER": {
+                "value": DOCKERHUB_USER,
+                "configured": DOCKERHUB_USER != "your_dockerhub_username" and bool(DOCKERHUB_USER),
+                "required": True,
+                "where": "Backend .env / docker-compose",
+                "purpose": "Docker image repository"
+            },
+            "DOCKERHUB_TOKEN": {
+                "value": "***" if DOCKERHUB_TOKEN else None,
+                "configured": bool(DOCKERHUB_TOKEN),
+                "required": False,  # Optional but recommended
+                "where": "Backend .env (hub.docker.com → Settings → Security)",
+                "purpose": "Avoid rate limits, access private repos"
+            }
+        },
+        "jenkins": {
+            "JENKINS_TOKEN": {
+                "value": "***" if JENKINS_TOKEN else None,
+                "configured": bool(JENKINS_TOKEN),
+                "required": True,
+                "where": "Backend .env (Jenkins → User → Configure → API Token)",
+                "purpose": "Trigger pipelines, get build status"
+            },
+            "DOCKERHUB_CREDENTIALS": {
+                "value": "credentialsId: dockerhub",
+                "configured": None,  # Can't check from backend
+                "required": True,
+                "where": "Jenkins → Manage → Credentials → Add (username + password/token)",
+                "purpose": "Push images to DockerHub"
+            },
+            "GITHUB_CREDENTIALS": {
+                "value": "credentialsId: github",
+                "configured": None,  # Can't check from backend
+                "required": True,
+                "where": "Jenkins → Manage → Credentials → Add (SSH key or token)",
+                "purpose": "Pull code from GitHub"
+            }
+        },
+        "kubernetes": {
+            "KUBECONFIG": {
+                "value": "~/.kube/config",
+                "configured": ENABLE_REAL_K8S,
+                "required": False,  # Only if ENABLE_REAL_K8S=true
+                "where": "Mounted via docker-compose (${HOME}/.kube:/root/.kube)",
+                "purpose": "Real kubectl access to minikube"
+            },
+            "ENABLE_REAL_K8S": {
+                "value": str(ENABLE_REAL_K8S),
+                "configured": True,  # Always set (default false)
+                "required": False,
+                "where": "Backend .env",
+                "purpose": "Enable real kubectl commands"
+            }
+        }
+    }
+    
+    # Calculate summary
+    missing_required = []
+    missing_optional = []
+    
+    for system, creds in credentials.items():
+        for cred_name, cred_info in creds.items():
+            if cred_info["configured"] is False:
+                if cred_info["required"]:
+                    missing_required.append(f"{system}.{cred_name}")
+                else:
+                    missing_optional.append(f"{system}.{cred_name}")
+    
+    all_required_ok = len(missing_required) == 0
+    
+    return {
+        "status": "ok" if all_required_ok else "missing_credentials",
+        "all_required_configured": all_required_ok,
+        "missing_required": missing_required,
+        "missing_optional": missing_optional,
+        "credentials": credentials,
+        "summary": {
+            "total_required": sum(1 for s in credentials.values() for c in s.values() if c["required"]),
+            "configured_required": sum(1 for s in credentials.values() for c in s.values() if c["required"] and c["configured"]),
+            "message": "All required credentials configured!" if all_required_ok else f"Missing {len(missing_required)} required credential(s)"
+        }
     }
 
 

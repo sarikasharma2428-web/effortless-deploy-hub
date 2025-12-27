@@ -380,6 +380,61 @@ export function useBackendHealth() {
   return { isHealthy, lastCheck, checkHealth };
 }
 
+// Credentials status hook - check what's missing
+export interface CredentialInfo {
+  value: string | null;
+  configured: boolean | null;
+  required: boolean;
+  where: string;
+  purpose: string;
+}
+
+export interface CredentialsStatus {
+  status: string;
+  all_required_configured: boolean;
+  missing_required: string[];
+  missing_optional: string[];
+  credentials: {
+    dockerhub: Record<string, CredentialInfo>;
+    jenkins: Record<string, CredentialInfo>;
+    kubernetes: Record<string, CredentialInfo>;
+  };
+  summary: {
+    total_required: number;
+    configured_required: number;
+    message: string;
+  };
+}
+
+export function useCredentialsStatus() {
+  const [status, setStatus] = useState<CredentialsStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchStatus = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/credentials/status`);
+      if (!response.ok) throw new Error('Failed to fetch credentials status');
+      const data = await response.json();
+      setStatus(data);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchStatus();
+    // Check less frequently
+    const interval = setInterval(fetchStatus, 60000);
+    return () => clearInterval(interval);
+  }, [fetchStatus]);
+
+  return { status, loading, error, refetch: fetchStatus };
+}
+
 // Hook to trigger deployment via backend → Jenkins
 export function useTriggerDeployment() {
   const [isDeploying, setIsDeploying] = useState(false);
