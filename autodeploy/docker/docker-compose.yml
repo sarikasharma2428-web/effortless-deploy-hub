@@ -19,8 +19,14 @@ services:
       - DOCKERHUB_USER=${DOCKERHUB_USER:-sarika1731}
       - DOCKERHUB_REPO=${DOCKERHUB_REPO:-autodeployx}
       - DOCKERHUB_TOKEN=${DOCKERHUB_TOKEN:-}
+      - K8S_NAMESPACE=${K8S_NAMESPACE:-default}
+      - K8S_DEPLOYMENT_NAME=${K8S_DEPLOYMENT_NAME:-autodeployx-app}
+      - ENABLE_REAL_K8S=${ENABLE_REAL_K8S:-false}
     volumes:
       - backend_data:/app/data
+      # Mount kubeconfig for real kubectl access (minikube)
+      - ${HOME}/.kube:/root/.kube:ro
+      - ${HOME}/.minikube:${HOME}/.minikube:ro
     networks:
       - autodeployx-network
     restart: unless-stopped
