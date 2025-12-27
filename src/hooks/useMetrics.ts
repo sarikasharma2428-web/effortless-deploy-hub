@@ -54,6 +54,59 @@ export interface PipelineBuild {
   message: string;
 }
 
+// Extended types for dashboard sections
+export interface CurrentPipeline {
+  pipelineName: string;
+  buildNumber: number;
+  status: 'running' | 'success' | 'failed' | 'pending';
+  currentStage: string;
+  branch: string;
+  startTime: string;
+  duration?: string;
+  stages: Array<{
+    name: string;
+    status: 'success' | 'running' | 'pending' | 'failed';
+    timestamp?: string;
+  }>;
+}
+
+export interface DockerImageInfo {
+  tag: string;
+  pushedAt: string;
+  size?: string;
+}
+
+export interface PodInfo {
+  name: string;
+  status: 'running' | 'pending' | 'failed' | 'terminated';
+  restarts?: number;
+}
+
+export interface RolloutEntry {
+  revision: number;
+  image: string;
+  timestamp: string;
+  status: 'success' | 'failed' | 'rolling';
+}
+
+export interface DeploymentInfo {
+  cluster: string;
+  namespace: string;
+  deploymentName: string;
+  currentVersion: string;
+  pods: PodInfo[];
+  rolloutHistory: RolloutEntry[];
+}
+
+export interface HistoryInfo {
+  totalPipelines: number;
+  successCount: number;
+  failureCount: number;
+  lastSuccessTime: string;
+  lastDeployedVersion: string;
+  successRate: number;
+}
+
 // Custom hook for fetching metrics with polling
 export function useMetrics(pollInterval: number = 5000) {
   const [metrics, setMetrics] = useState<AllMetrics | null>(null);
@@ -142,6 +195,125 @@ export function usePipelines(pollInterval: number = 5000, limit: number = 10) {
   }, [fetchPipelines, pollInterval]);
 
   return { pipelines, loading, error, refetch: fetchPipelines };
+}
+
+// Hook for current pipeline status (real-time tracking)
+export function useCurrentPipeline(pollInterval: number = 2000) {
+  const [pipeline, setPipeline] = useState<CurrentPipeline | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchCurrentPipeline = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/pipelines/current`);
+      if (!response.ok) throw new Error('Failed to fetch current pipeline');
+      const data = await response.json();
+      setPipeline(data.pipeline);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      setPipeline(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCurrentPipeline();
+    const interval = setInterval(fetchCurrentPipeline, pollInterval);
+    return () => clearInterval(interval);
+  }, [fetchCurrentPipeline, pollInterval]);
+
+  return { pipeline, loading, error, refetch: fetchCurrentPipeline };
+}
+
+// Hook for Docker images
+export function useDockerImages(pollInterval: number = 10000) {
+  const [images, setImages] = useState<DockerImageInfo[]>([]);
+  const [repository, setRepository] = useState<string>('sarika1731/autodeployx');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchDockerImages = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/docker/images`);
+      if (!response.ok) throw new Error('Failed to fetch Docker images');
+      const data = await response.json();
+      setImages(data.images || []);
+      setRepository(data.repository || 'sarika1731/autodeployx');
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDockerImages();
+    const interval = setInterval(fetchDockerImages, pollInterval);
+    return () => clearInterval(interval);
+  }, [fetchDockerImages, pollInterval]);
+
+  return { images, repository, loading, error, refetch: fetchDockerImages };
+}
+
+// Hook for Kubernetes deployment info
+export function useDeploymentInfo(pollInterval: number = 5000) {
+  const [deployment, setDeployment] = useState<DeploymentInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchDeployment = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/kubernetes/deployment`);
+      if (!response.ok) throw new Error('Failed to fetch deployment info');
+      const data = await response.json();
+      setDeployment(data);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDeployment();
+    const interval = setInterval(fetchDeployment, pollInterval);
+    return () => clearInterval(interval);
+  }, [fetchDeployment, pollInterval]);
+
+  return { deployment, loading, error, refetch: fetchDeployment };
+}
+
+// Hook for history stats
+export function useHistoryStats(pollInterval: number = 10000) {
+  const [history, setHistory] = useState<HistoryInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchHistory = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/stats/history`);
+      if (!response.ok) throw new Error('Failed to fetch history');
+      const data = await response.json();
+      setHistory(data);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchHistory();
+    const interval = setInterval(fetchHistory, pollInterval);
+    return () => clearInterval(interval);
+  }, [fetchHistory, pollInterval]);
+
+  return { history, loading, error, refetch: fetchHistory };
 }
 
 // Health check hook
