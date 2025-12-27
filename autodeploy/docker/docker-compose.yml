@@ -18,11 +18,14 @@ services:
       - JENKINS_TOKEN=${JENKINS_TOKEN:-}
       - DOCKERHUB_USER=${DOCKERHUB_USER:-sarika1731}
       - DOCKERHUB_REPO=${DOCKERHUB_REPO:-autodeployx}
+      - DOCKERHUB_TOKEN=${DOCKERHUB_TOKEN:-}
+    volumes:
+      - backend_data:/app/data
     networks:
       - autodeployx-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -104,3 +107,4 @@ volumes:
   postgres_data:
   redis_data:
   jenkins_home:
+  backend_data:
