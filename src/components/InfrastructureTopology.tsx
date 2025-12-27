@@ -1,4 +1,4 @@
-import { Server, Database, Container, Globe, Box, Cpu, ArrowRight } from "lucide-react";
+import { Server, Database, Container, Globe, Box, ArrowRight, Monitor } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface NodeProps {
@@ -6,9 +6,10 @@ interface NodeProps {
   label: string;
   status: "healthy" | "warning" | "error";
   details?: string;
+  role?: string;
 }
 
-function TopologyNode({ icon, label, status, details }: NodeProps) {
+function TopologyNode({ icon, label, status, details, role }: NodeProps) {
   return (
     <div className="flex flex-col items-center p-5 bg-card border border-border/30 group card-hover cursor-pointer">
       {/* Top accent */}
@@ -32,6 +33,9 @@ function TopologyNode({ icon, label, status, details }: NodeProps) {
       {details && (
         <span className="text-[10px] text-muted-foreground mt-1">{details}</span>
       )}
+      {role && (
+        <span className="text-[9px] text-primary/70 mt-0.5 italic">{role}</span>
+      )}
       
       <div className={cn(
         "w-2 h-2 mt-3 status-indicator",
@@ -43,15 +47,18 @@ function TopologyNode({ icon, label, status, details }: NodeProps) {
   );
 }
 
-export function InfrastructureTopology() {
-  const nodes = [
-    { icon: <Globe className="w-5 h-5" />, label: "GitHub", status: "healthy" as const, details: "Source" },
-    { icon: <Server className="w-5 h-5" />, label: "Jenkins", status: "healthy" as const, details: "CI/CD" },
-    { icon: <Container className="w-5 h-5" />, label: "DockerHub", status: "healthy" as const, details: "Registry" },
-    { icon: <Box className="w-5 h-5" />, label: "Minikube", status: "healthy" as const, details: "Cluster" },
-    { icon: <Database className="w-5 h-5" />, label: "Database", status: "healthy" as const, details: "PostgreSQL" },
-  ];
+function FlowArrow({ label }: { label: string }) {
+  return (
+    <div className="hidden lg:flex flex-col items-center justify-center px-2">
+      <ArrowRight className="w-5 h-5 text-primary/50" />
+      <span className="text-[8px] text-muted-foreground mt-1 uppercase tracking-wider whitespace-nowrap">
+        {label}
+      </span>
+    </div>
+  );
+}
 
+export function InfrastructureTopology() {
   return (
     <section className="py-16">
       <div className="container mx-auto px-6">
@@ -61,18 +68,88 @@ export function InfrastructureTopology() {
             <span className="text-gold text-xs">◆ ◆ ◆</span>
           </div>
           <h2 className="font-display text-2xl md:text-3xl tracking-[0.15em] text-foreground mb-4">
-            INFRASTRUCTURE
+            INFRASTRUCTURE FLOW
           </h2>
           <p className="font-serif text-lg text-muted-foreground italic max-w-xl mx-auto">
-            Your complete DevOps pipeline topology at a glance
+            Complete CI/CD pipeline: Dashboard → Jenkins → DockerHub → Kubernetes
           </p>
         </div>
 
-        {/* Nodes Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-          {nodes.map((node) => (
-            <TopologyNode key={node.label} {...node} />
-          ))}
+        {/* Pipeline Flow - Explicit arrows */}
+        <div className="flex flex-col lg:flex-row items-center justify-center gap-2 lg:gap-0 mb-8">
+          <TopologyNode 
+            icon={<Monitor className="w-5 h-5" />} 
+            label="Dashboard" 
+            status="healthy" 
+            details="React App"
+            role="Triggers & Views"
+          />
+          <FlowArrow label="Trigger" />
+          
+          <TopologyNode 
+            icon={<Server className="w-5 h-5" />} 
+            label="Backend" 
+            status="healthy" 
+            details="FastAPI"
+            role="API + WebSocket"
+          />
+          <FlowArrow label="Webhook" />
+          
+          <TopologyNode 
+            icon={<Globe className="w-5 h-5" />} 
+            label="Jenkins" 
+            status="healthy" 
+            details="CI/CD Engine"
+            role="OWNS Pipeline"
+          />
+          <FlowArrow label="docker push" />
+          
+          <TopologyNode 
+            icon={<Container className="w-5 h-5" />} 
+            label="DockerHub" 
+            status="healthy" 
+            details="Registry"
+            role="Store Images"
+          />
+          <FlowArrow label="kubectl apply" />
+          
+          <TopologyNode 
+            icon={<Box className="w-5 h-5" />} 
+            label="Minikube" 
+            status="healthy" 
+            details="K8s Cluster"
+            role="Run Pods"
+          />
+        </div>
+
+        {/* Key Architecture Points */}
+        <div className="max-w-3xl mx-auto mt-8 p-6 bg-secondary/30 border border-border/30">
+          <h3 className="font-display text-sm tracking-[0.15em] text-foreground mb-4 text-center">
+            KEY ARCHITECTURE POINTS
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+            <div className="p-3 bg-card border border-border/20">
+              <p className="text-primary font-medium mb-1">1. Jenkins Owns Pipeline</p>
+              <p className="text-muted-foreground">
+                Backend <span className="text-foreground">triggers</span> Jenkins. 
+                Jenkins <span className="text-foreground">builds, pushes, deploys</span>.
+              </p>
+            </div>
+            <div className="p-3 bg-card border border-border/20">
+              <p className="text-primary font-medium mb-1">2. Jenkins → DockerHub</p>
+              <p className="text-muted-foreground">
+                Jenkins runs <code className="text-foreground">docker build</code> + 
+                <code className="text-foreground"> docker push</code> to registry.
+              </p>
+            </div>
+            <div className="p-3 bg-card border border-border/20">
+              <p className="text-primary font-medium mb-1">3. Kubeconfig Mount</p>
+              <p className="text-muted-foreground">
+                Backend needs <code className="text-foreground">~/.kube</code> mounted 
+                for real <code className="text-foreground">kubectl</code> access.
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Legend */}
