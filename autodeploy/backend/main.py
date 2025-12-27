@@ -16,6 +16,7 @@ import os
 import json
 import random
 import asyncio
+import subprocess
 
 app = FastAPI(
     title="AutoDeployX Tracking API",
@@ -543,25 +544,142 @@ async def record_deployment_event(event: DeploymentEvent):
 
 
 # =============================================
-# MANUAL DEPLOYMENT (Dashboard-triggered)
+# KUBECTL HELPER FUNCTIONS
+# =============================================
+
+def run_kubectl(args: List[str], timeout: int = 30) -> tuple[bool, str]:
+    """Run kubectl command and return (success, output)"""
+    try:
+        result = subprocess.run(
+            ["kubectl"] + args,
+            capture_output=True,
+            text=True,
+            timeout=timeout
+        )
+        if result.returncode == 0:
+            return True, result.stdout
+        else:
+            print(f"[kubectl] Error: {result.stderr}")
+            return False, result.stderr
+    except subprocess.TimeoutExpired:
+        print(f"[kubectl] Timeout running: {args}")
+        return False, "Command timed out"
+    except FileNotFoundError:
+        print("[kubectl] kubectl not found - using simulated mode")
+        return False, "kubectl not installed"
+    except Exception as e:
+        print(f"[kubectl] Exception: {e}")
+        return False, str(e)
+
+
+def get_real_pods(namespace: str = "default") -> List[dict]:
+    """Get real pods from Kubernetes"""
+    success, output = run_kubectl([
+        "get", "pods", 
+        "-n", namespace,
+        "-l", f"app={K8S_DEPLOYMENT_NAME}",
+        "-o", "json"
+    ])
+    
+    if success:
+        try:
+            data = json.loads(output)
+            pods = []
+            for item in data.get("items", []):
+                status = item.get("status", {})
+                phase = status.get("phase", "Unknown").lower()
+                container_statuses = status.get("containerStatuses", [{}])
+                restarts = container_statuses[0].get("restartCount", 0) if container_statuses else 0
+                
+                pods.append({
+                    "name": item.get("metadata", {}).get("name", "unknown"),
+                    "status": phase,
+                    "restarts": restarts
+                })
+            return pods
+        except json.JSONDecodeError:
+            pass
+    
+    # Fallback to simulated pods
+    return []
+
+
+def get_rollout_history(namespace: str = "default") -> List[dict]:
+    """Get rollout history from Kubernetes"""
+    success, output = run_kubectl([
+        "rollout", "history",
+        f"deployment/{K8S_DEPLOYMENT_NAME}",
+        "-n", namespace
+    ])
+    
+    if success:
+        history = []
+        lines = output.strip().split("\n")
+        for line in lines[1:]:  # Skip header
+            parts = line.split()
+            if len(parts) >= 1 and parts[0].isdigit():
+                revision = int(parts[0])
+                history.append({
+                    "revision": revision,
+                    "image": f"v{revision}",
+                    "timestamp": datetime.now().strftime("%H:%M:%S"),
+                    "status": "success"
+                })
+        return history[:10]  # Last 10 revisions
+    
+    return []
+
+
+# =============================================
+# MANUAL DEPLOYMENT (Dashboard-triggered with REAL kubectl)
 # =============================================
 
 @app.post("/deployments/manual")
 async def manual_deployment(request: ManualDeployRequest):
     """
-    Manual deployment from dashboard - deploy specific image without triggering full pipeline
-    This is like ArgoCD's manual sync feature
+    Manual deployment from dashboard - deploy specific image using kubectl
+    Runs: kubectl set image deployment/autodeployx-app autodeployx-app=image:tag
     """
     global kubernetes_state
+    
+    full_image = f"{DOCKERHUB_USER}/{DOCKERHUB_REPO}:{request.image_tag}"
     
     log_entry = {
         "timestamp": datetime.now().strftime("%H:%M:%S"),
         "level": "info",
-        "message": f"Manual deployment initiated: {DOCKERHUB_USER}/{DOCKERHUB_REPO}:{request.image_tag}"
+        "message": f"Manual deployment initiated: {full_image}"
     }
     deployment_logs.insert(0, log_entry)
     
-    # Simulate kubectl set image command
+    # Try real kubectl if ENABLE_REAL_K8S is true
+    if ENABLE_REAL_K8S:
+        success, output = run_kubectl([
+            "set", "image",
+            f"deployment/{K8S_DEPLOYMENT_NAME}",
+            f"{K8S_DEPLOYMENT_NAME}={full_image}",
+            "-n", request.namespace,
+            "--record"
+        ])
+        
+        if success:
+            log_entry = {
+                "timestamp": datetime.now().strftime("%H:%M:%S"),
+                "level": "success",
+                "message": f"kubectl set image succeeded: {full_image}"
+            }
+            deployment_logs.insert(0, log_entry)
+            
+            # Start async rollout status check
+            asyncio.create_task(wait_for_rollout(request.image_tag, request.namespace))
+        else:
+            log_entry = {
+                "timestamp": datetime.now().strftime("%H:%M:%S"),
+                "level": "error",
+                "message": f"kubectl set image failed: {output}"
+            }
+            deployment_logs.insert(0, log_entry)
+    
+    # Update local state
     kubernetes_state["currentVersion"] = request.image_tag
     kubernetes_state["rolloutHistory"].insert(0, {
         "revision": len(kubernetes_state["rolloutHistory"]) + 1,
@@ -569,11 +687,12 @@ async def manual_deployment(request: ManualDeployRequest):
         "timestamp": datetime.now().strftime("%H:%M:%S"),
         "status": "rolling"
     })
+    kubernetes_state["rolloutHistory"] = kubernetes_state["rolloutHistory"][:10]
     
     # Update pods to show rolling status
     kubernetes_state["pods"] = [
         {
-            "name": f"autodeployx-app-{random.randint(1000,9999)}",
+            "name": f"autodeployx-app-pending",
             "status": "pending",
             "restarts": 0
         }
@@ -584,22 +703,68 @@ async def manual_deployment(request: ManualDeployRequest):
         "image_tag": request.image_tag,
         "namespace": request.namespace,
         "status": "rolling",
-        "kubernetes": kubernetes_state
+        "kubernetes": kubernetes_state,
+        "real_kubectl": ENABLE_REAL_K8S
     })
     
-    # Simulate async deployment completion (in production, this would be actual kubectl)
-    asyncio.create_task(complete_manual_deployment(request.image_tag))
+    # If not using real K8s, simulate completion
+    if not ENABLE_REAL_K8S:
+        asyncio.create_task(simulate_deployment_completion(request.image_tag))
+    
+    # 💾 PERSIST
+    save_persisted_data()
     
     return {
         "status": "deploying",
-        "image": f"{DOCKERHUB_USER}/{DOCKERHUB_REPO}:{request.image_tag}",
-        "namespace": request.namespace
+        "image": full_image,
+        "namespace": request.namespace,
+        "real_kubectl": ENABLE_REAL_K8S
     }
 
 
-async def complete_manual_deployment(image_tag: str):
-    """Simulate deployment completion after a delay"""
-    await asyncio.sleep(5)  # Simulate deployment time
+async def wait_for_rollout(image_tag: str, namespace: str = "default"):
+    """Wait for kubectl rollout to complete"""
+    success, output = run_kubectl([
+        "rollout", "status",
+        f"deployment/{K8S_DEPLOYMENT_NAME}",
+        "-n", namespace,
+        "--timeout=180s"
+    ], timeout=200)
+    
+    # Fetch real pods after rollout
+    real_pods = get_real_pods(namespace)
+    if real_pods:
+        kubernetes_state["pods"] = real_pods
+    
+    if success:
+        kubernetes_state["rolloutHistory"][0]["status"] = "success"
+        log_entry = {
+            "timestamp": datetime.now().strftime("%H:%M:%S"),
+            "level": "success",
+            "message": f"Rollout completed: {image_tag}"
+        }
+    else:
+        kubernetes_state["rolloutHistory"][0]["status"] = "failed"
+        log_entry = {
+            "timestamp": datetime.now().strftime("%H:%M:%S"),
+            "level": "error",
+            "message": f"Rollout failed: {output}"
+        }
+    
+    deployment_logs.insert(0, log_entry)
+    save_persisted_data()
+    
+    # 🔥 BROADCAST completion
+    await broadcast_state_update("deployment_complete", {
+        "image_tag": image_tag,
+        "status": "success" if success else "failed",
+        "kubernetes": kubernetes_state
+    })
+
+
+async def simulate_deployment_completion(image_tag: str):
+    """Simulate deployment completion when not using real K8s"""
+    await asyncio.sleep(5)
     
     kubernetes_state["pods"] = [
         {
@@ -613,9 +778,10 @@ async def complete_manual_deployment(image_tag: str):
     log_entry = {
         "timestamp": datetime.now().strftime("%H:%M:%S"),
         "level": "success",
-        "message": f"Manual deployment completed: {image_tag}"
+        "message": f"Simulated deployment completed: {image_tag}"
     }
     deployment_logs.insert(0, log_entry)
+    save_persisted_data()
     
     # 🔥 BROADCAST deployment complete
     await broadcast_state_update("deployment_complete", {
@@ -939,11 +1105,38 @@ async def get_docker_images_list():
 
 
 # =============================================
-# KUBERNETES DEPLOYMENT ENDPOINT
+# KUBERNETES DEPLOYMENT ENDPOINT (with REAL kubectl)
 # =============================================
 
 @app.get("/kubernetes/deployment")
 async def get_kubernetes_deployment():
+    """Get Kubernetes deployment status - uses real kubectl if enabled"""
+    
+    # Try to get real pods if ENABLE_REAL_K8S
+    if ENABLE_REAL_K8S:
+        real_pods = get_real_pods(K8S_NAMESPACE)
+        if real_pods:
+            kubernetes_state["pods"] = real_pods
+        
+        # Get real rollout history
+        real_history = get_rollout_history(K8S_NAMESPACE)
+        if real_history:
+            kubernetes_state["rolloutHistory"] = real_history
+        
+        # Get current image version
+        success, output = run_kubectl([
+            "get", "deployment", K8S_DEPLOYMENT_NAME,
+            "-n", K8S_NAMESPACE,
+            "-o", "jsonpath={.spec.template.spec.containers[0].image}"
+        ])
+        if success and output:
+            # Extract tag from image name
+            if ":" in output:
+                kubernetes_state["currentVersion"] = output.split(":")[-1]
+            else:
+                kubernetes_state["currentVersion"] = "latest"
+    
+    # Fallback to simulated data if no pods
     if not kubernetes_state["pods"]:
         kubernetes_state["pods"] = [
             {
@@ -959,8 +1152,21 @@ async def get_kubernetes_deployment():
         "deploymentName": kubernetes_state["deploymentName"],
         "currentVersion": kubernetes_state["currentVersion"],
         "pods": kubernetes_state["pods"],
-        "rolloutHistory": kubernetes_state["rolloutHistory"][:5]
+        "rolloutHistory": kubernetes_state["rolloutHistory"][:5],
+        "real_kubectl": ENABLE_REAL_K8S
     }
+
+
+@app.get("/kubernetes/pods")
+async def get_pods():
+    """Get real pods from Kubernetes"""
+    if ENABLE_REAL_K8S:
+        real_pods = get_real_pods(K8S_NAMESPACE)
+        if real_pods:
+            kubernetes_state["pods"] = real_pods
+            return {"pods": real_pods, "source": "kubectl"}
+    
+    return {"pods": kubernetes_state["pods"], "source": "simulated"}
 
 
 @app.post("/kubernetes/pods")
@@ -974,6 +1180,18 @@ async def update_pods(pods: List[dict]):
     })
     
     return {"status": "updated", "pods": len(pods)}
+
+
+@app.get("/kubernetes/rollout-history")
+async def get_rollout_history_endpoint():
+    """Get rollout history from Kubernetes"""
+    if ENABLE_REAL_K8S:
+        real_history = get_rollout_history(K8S_NAMESPACE)
+        if real_history:
+            kubernetes_state["rolloutHistory"] = real_history
+            return {"history": real_history, "source": "kubectl"}
+    
+    return {"history": kubernetes_state["rolloutHistory"], "source": "simulated"}
 
 
 # =============================================
