@@ -168,3 +168,75 @@ export function useBackendHealth() {
 
   return { isHealthy, lastCheck, checkHealth };
 }
+
+// Hook to trigger deployment via backend → Jenkins
+export function useTriggerDeployment() {
+  const [isDeploying, setIsDeploying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastTrigger, setLastTrigger] = useState<Date | null>(null);
+
+  const triggerDeployment = useCallback(async (pipelineName: string = 'autodeployx-backend') => {
+    setIsDeploying(true);
+    setError(null);
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/pipelines/trigger`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          pipeline_name: pipelineName,
+          branch: 'main',
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || 'Failed to trigger deployment');
+      }
+
+      setLastTrigger(new Date());
+      return await response.json();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to trigger deployment';
+      setError(message);
+      throw err;
+    } finally {
+      setIsDeploying(false);
+    }
+  }, []);
+
+  return { triggerDeployment, isDeploying, error, lastTrigger };
+}
+
+// Hook for rollback
+export function useRollback() {
+  const [isRollingBack, setIsRollingBack] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const rollback = useCallback(async (deploymentId: string) => {
+    setIsRollingBack(true);
+    setError(null);
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/deployments/${deploymentId}/rollback`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to rollback deployment');
+      }
+
+      return await response.json();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to rollback';
+      setError(message);
+      throw err;
+    } finally {
+      setIsRollingBack(false);
+    }
+  }, []);
+
+  return { rollback, isRollingBack, error };
+}

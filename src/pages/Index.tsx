@@ -189,7 +189,7 @@ export default function Index() {
                 />
               </div>
 
-              <QuickActions onViewFiles={() => setShowConfigFiles(true)} />
+              <QuickActions onViewFiles={() => setShowConfigFiles(true)} isConnected={isConnected} />
             </div>
           </div>
         </div>
