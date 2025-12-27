@@ -179,7 +179,7 @@ export function usePipelines(pollInterval: number = 5000, limit: number = 10) {
       const response = await fetch(`${API_BASE_URL}/pipelines/recent?limit=${limit}`);
       if (!response.ok) throw new Error('Failed to fetch pipelines');
       const data = await response.json();
-      setPipelines(data.builds);
+      setPipelines(data.builds || []);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -195,6 +195,45 @@ export function usePipelines(pollInterval: number = 5000, limit: number = 10) {
   }, [fetchPipelines, pollInterval]);
 
   return { pipelines, loading, error, refetch: fetchPipelines };
+}
+
+// Extended pipeline build for history page
+export interface PipelineBuildExtended extends PipelineBuild {
+  branch?: string;
+  commit?: string;
+  duration?: number;
+}
+
+// Hook for pipeline history (full list with stats)
+export function usePipelineHistory(pollInterval: number = 5000, limit: number = 50) {
+  const [pipelines, setPipelines] = useState<PipelineBuildExtended[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+
+  const fetchHistory = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/pipelines/history?limit=${limit}`);
+      if (!response.ok) throw new Error('Failed to fetch pipeline history');
+      const data = await response.json();
+      setPipelines(data.builds || []);
+      setIsConnected(true);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      setIsConnected(false);
+    } finally {
+      setLoading(false);
+    }
+  }, [limit]);
+
+  useEffect(() => {
+    fetchHistory();
+    const interval = setInterval(fetchHistory, pollInterval);
+    return () => clearInterval(interval);
+  }, [fetchHistory, pollInterval]);
+
+  return { pipelines, loading, error, refetch: fetchHistory, isConnected };
 }
 
 // Hook for current pipeline status (real-time tracking)
