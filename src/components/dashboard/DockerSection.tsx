@@ -1,4 +1,4 @@
-import { Container, Tag, Clock, Database, ExternalLink, AlertCircle } from "lucide-react";
+import { Container, Tag, Clock, Database, ExternalLink, AlertCircle, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface DockerImage {
@@ -15,6 +15,8 @@ interface DockerSectionProps {
   totalImages?: number;
   className?: string;
   disconnected?: boolean;
+  authenticated?: boolean;
+  rateLimited?: boolean;
 }
 
 export function DockerSection({
@@ -25,6 +27,8 @@ export function DockerSection({
   totalImages,
   className,
   disconnected = false,
+  authenticated = false,
+  rateLimited = false,
 }: DockerSectionProps) {
 
   return (
@@ -44,7 +48,33 @@ export function DockerSection({
           </h3>
           <p className="text-xs text-muted-foreground">{registry}</p>
         </div>
+        {/* Auth status badge */}
+        {!disconnected && (
+          <div className={cn(
+            "ml-auto text-xs px-2 py-0.5 rounded",
+            authenticated 
+              ? "bg-success/10 text-success border border-success/30" 
+              : "bg-amber-500/10 text-amber-500 border border-amber-500/30"
+          )}>
+            {authenticated ? "Authenticated" : "No Token"}
+          </div>
+        )}
       </div>
+
+      {/* Rate Limit Warning */}
+      {rateLimited && !authenticated && (
+        <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-xs text-amber-500 font-medium">DockerHub Rate Limited</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Add DOCKERHUB_TOKEN to .env to avoid rate limits
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Image Name */}
       <div className="mb-4 p-4 bg-secondary/50 border border-border/30">

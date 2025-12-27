@@ -272,6 +272,8 @@ export function useDockerImages(pollInterval: number = 10000) {
   const [repository, setRepository] = useState<string>('sarika1731/autodeployx');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [rateLimited, setRateLimited] = useState(false);
 
   const fetchDockerImages = useCallback(async () => {
     try {
@@ -280,6 +282,8 @@ export function useDockerImages(pollInterval: number = 10000) {
       const data = await response.json();
       setImages(data.images || []);
       setRepository(data.repository || 'sarika1731/autodeployx');
+      setAuthenticated(data.authenticated || false);
+      setRateLimited(data.images?.length === 0 && !data.authenticated);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -294,7 +298,7 @@ export function useDockerImages(pollInterval: number = 10000) {
     return () => clearInterval(interval);
   }, [fetchDockerImages, pollInterval]);
 
-  return { images, repository, loading, error, refetch: fetchDockerImages };
+  return { images, repository, loading, error, authenticated, rateLimited, refetch: fetchDockerImages };
 }
 
 // Hook for Kubernetes deployment info

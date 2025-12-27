@@ -101,7 +101,7 @@ export default function Index() {
   // Fallback polling hooks (used when WebSocket not available or for initial data)
   const { metrics, loading: metricsLoading, isConnected: httpConnected, refetch: refetchMetrics } = useMetrics(10000); // Reduced polling since WS handles real-time
   const { logs: httpLogs, loading: logsLoading } = useLogs(10000, 20);
-  const { images: dockerImages, repository: dockerRepo } = useDockerImages(30000); // Less frequent since WS handles updates
+  const { images: dockerImages, repository: dockerRepo, authenticated: dockerAuthenticated, rateLimited: dockerRateLimited } = useDockerImages(30000);
   const { history } = useHistoryStats(30000);
 
   // Combined connection status (WebSocket preferred)
@@ -120,15 +120,17 @@ export default function Index() {
   }, [wsLogs, httpLogs]);
 
   const displayDocker = useMemo(() => {
-    if (!isConnected) return fallbackDocker;
+    if (!isConnected) return { ...fallbackDocker, authenticated: false, rateLimited: false };
     return {
       imageName: dockerRepo,
       registry: "DockerHub",
       tags: dockerImages.map(img => ({ tag: img.tag, pushedAt: img.pushedAt })),
       latestPushTime: dockerImages[0]?.pushedAt || "--",
       totalImages: metrics?.docker_images.count ?? dockerImages.length,
+      authenticated: dockerAuthenticated,
+      rateLimited: dockerRateLimited,
     };
-  }, [isConnected, dockerImages, dockerRepo, metrics]);
+  }, [isConnected, dockerImages, dockerRepo, metrics, dockerAuthenticated, dockerRateLimited]);
 
   const displayDeployment = useMemo(() => {
     if (wsKubernetes) return wsKubernetes;
@@ -283,6 +285,8 @@ export default function Index() {
               latestPushTime={displayDocker.latestPushTime}
               totalImages={displayDocker.totalImages}
               disconnected={!isConnected}
+              authenticated={displayDocker.authenticated}
+              rateLimited={displayDocker.rateLimited}
             />
 
             {/* Deployment Section */}
