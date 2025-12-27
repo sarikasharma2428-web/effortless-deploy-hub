@@ -482,6 +482,9 @@ async def update_stage(stage_update: StageUpdate):
     }
     deployment_logs.insert(0, log_entry)
     
+    # 💾 PERSIST stage update
+    save_persisted_data()
+    
     # 🔥 BROADCAST stage update
     await broadcast_state_update("stage_update", {
         "stage": stage_update.stage_name,
