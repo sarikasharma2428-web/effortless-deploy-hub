@@ -26,8 +26,8 @@ spec:
         version: v1
     spec:
       containers:
-      - name: autodeployx
-        image: yourusername/autodeployx:latest
+      - name: autodeployx-app
+        image: sarika1731/autodeployx:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8000
