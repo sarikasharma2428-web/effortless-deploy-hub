@@ -16,7 +16,7 @@ services:
       - JENKINS_URL=http://jenkins:8080
       - JENKINS_USER=admin
       - JENKINS_TOKEN=${JENKINS_TOKEN:-}
-      - DOCKERHUB_USER=${DOCKERHUB_USER:-sarika}
+      - DOCKERHUB_USER=${DOCKERHUB_USER:-sarika1731}
       - DOCKERHUB_REPO=${DOCKERHUB_REPO:-autodeployx}
     networks:
       - autodeployx-network
