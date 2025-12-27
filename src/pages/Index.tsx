@@ -297,6 +297,7 @@ export default function Index() {
               currentVersion={displayDeployment.currentVersion}
               pods={displayDeployment.pods}
               rolloutHistory={displayDeployment.rolloutHistory}
+              availableTags={displayDocker.tags.map(t => t.tag)}
               disconnected={!isConnected}
             />
           </div>
