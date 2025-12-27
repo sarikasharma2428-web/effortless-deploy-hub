@@ -1,8 +1,6 @@
-import { Play, RotateCcw, Settings, Download, FileCode, Loader2 } from "lucide-react";
+import { Settings, Download, FileCode, ExternalLink } from "lucide-react";
 import { Button } from "./ui/button";
-import { useTriggerDeployment, useRollback } from "@/hooks/useMetrics";
 import { toast } from "sonner";
-import { useState } from "react";
 
 interface QuickActionsProps {
   onViewFiles?: () => void;
@@ -10,72 +8,18 @@ interface QuickActionsProps {
 }
 
 export function QuickActions({ onViewFiles, isConnected = false }: QuickActionsProps) {
-  const { triggerDeployment, isDeploying } = useTriggerDeployment();
-  const { rollback, isRollingBack } = useRollback();
-  const [lastDeploymentId, setLastDeploymentId] = useState<string | null>(null);
 
-  const handleDeploy = async () => {
-    if (!isConnected) {
-      toast.error("Backend not connected", {
-        description: "Start your backend server first: docker-compose up",
-      });
-      return;
-    }
-
-    try {
-      toast.info("Triggering deployment...", {
-        description: "Jenkins pipeline will start shortly",
-      });
-      
-      const result = await triggerDeployment("autodeployx-backend");
-      setLastDeploymentId(result.deployment_id);
-      
-      toast.success("Deployment triggered!", {
-        description: `Pipeline #${result.build_number || 'new'} started`,
-      });
-    } catch (error) {
-      toast.error("Failed to trigger deployment", {
-        description: error instanceof Error ? error.message : "Check backend connection",
-      });
-    }
-  };
-
-  const handleRollback = async () => {
-    if (!isConnected) {
-      toast.error("Backend not connected");
-      return;
-    }
-
-    if (!lastDeploymentId) {
-      toast.warning("No recent deployment to rollback", {
-        description: "Deploy first, then you can rollback",
-      });
-      return;
-    }
-
-    try {
-      await rollback(lastDeploymentId);
-      toast.success("Rollback initiated", {
-        description: "Previous version will be restored",
-      });
-    } catch (error) {
-      toast.error("Rollback failed", {
-        description: error instanceof Error ? error.message : "Check backend connection",
-      });
-    }
-  };
-
-  const handleConfigure = () => {
-    toast.info("Configuration", {
-      description: "Open Jenkins UI at http://localhost:8080",
+  const handleOpenJenkins = () => {
+    toast.info("Opening Jenkins", {
+      description: "Jenkins handles all deployments",
     });
+    window.open("http://localhost:8080", "_blank");
   };
 
   const handleExport = () => {
     toast.info("Exporting logs...", {
       description: "Download will start shortly",
     });
-    // This would call GET /logs/export endpoint
   };
 
   return (
@@ -90,47 +34,33 @@ export function QuickActions({ onViewFiles, isConnected = false }: QuickActionsP
         )}
       </div>
 
+      {/* Info Banner */}
+      <div className="mb-6 p-4 bg-primary/10 border border-primary/30">
+        <p className="text-xs text-primary text-center">
+          🚀 All deployments are triggered via <strong>Jenkins Pipeline</strong>
+        </p>
+        <p className="text-xs text-muted-foreground text-center mt-1">
+          Dashboard → Jenkins → Docker Hub → Kubernetes
+        </p>
+      </div>
+
       {/* Actions Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        {/* Deploy Button */}
+      <div className="grid grid-cols-3 gap-3 mb-6">
+        {/* Open Jenkins Button */}
         <Button
           variant="glow"
           className="flex flex-col gap-2 h-auto py-5"
-          onClick={handleDeploy}
-          disabled={isDeploying || !isConnected}
+          onClick={handleOpenJenkins}
         >
-          {isDeploying ? (
-            <Loader2 className="w-5 h-5 animate-spin" />
-          ) : (
-            <Play className="w-5 h-5" />
-          )}
-          <span className="text-xs tracking-wider uppercase">
-            {isDeploying ? "Deploying..." : "Deploy"}
-          </span>
-        </Button>
-
-        {/* Rollback Button */}
-        <Button
-          variant="outline"
-          className="flex flex-col gap-2 h-auto py-5"
-          onClick={handleRollback}
-          disabled={isRollingBack || !isConnected}
-        >
-          {isRollingBack ? (
-            <Loader2 className="w-5 h-5 animate-spin" />
-          ) : (
-            <RotateCcw className="w-5 h-5" />
-          )}
-          <span className="text-xs tracking-wider uppercase">
-            {isRollingBack ? "Rolling..." : "Rollback"}
-          </span>
+          <ExternalLink className="w-5 h-5" />
+          <span className="text-xs tracking-wider uppercase">Jenkins</span>
         </Button>
 
         {/* Configure Button */}
         <Button
           variant="outline"
           className="flex flex-col gap-2 h-auto py-5"
-          onClick={handleConfigure}
+          onClick={handleOpenJenkins}
         >
           <Settings className="w-5 h-5" />
           <span className="text-xs tracking-wider uppercase">Configure</span>

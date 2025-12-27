@@ -1,8 +1,5 @@
-import { Container, Tag, Clock, Database, ExternalLink, AlertCircle, Rocket } from "lucide-react";
+import { Container, Tag, Clock, Database, ExternalLink, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { useTriggerDeployment } from "@/hooks/useMetrics";
-import { toast } from "sonner";
 
 interface DockerImage {
   tag: string;
@@ -29,23 +26,6 @@ export function DockerSection({
   className,
   disconnected = false,
 }: DockerSectionProps) {
-  const { triggerDeployment, isDeploying } = useTriggerDeployment();
-
-  const handleTriggerPipeline = async () => {
-    try {
-      toast.info("Triggering Jenkins Pipeline...", {
-        description: "This will build and push a new image",
-      });
-      const result = await triggerDeployment("autodeployx-backend");
-      toast.success("Pipeline triggered!", {
-        description: `Build #${result.build_number || 'new'} started. Image will be pushed to DockerHub.`,
-      });
-    } catch (error) {
-      toast.error("Failed to trigger pipeline", {
-        description: error instanceof Error ? error.message : "Check Jenkins connection",
-      });
-    }
-  };
 
   return (
     <div className={cn(
@@ -136,7 +116,7 @@ export function DockerSection({
                 <div>
                   <p className="text-xs text-amber-500 font-medium">No images found</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Trigger a pipeline to build and push your first image
+                    Trigger a Jenkins pipeline to build and push your first image
                   </p>
                 </div>
               </div>
@@ -144,20 +124,6 @@ export function DockerSection({
           )}
         </div>
       </div>
-
-      {/* Build Image Button - Only Jenkins builds images */}
-      {tags.length === 0 && (
-        <Button
-          variant="glow"
-          size="sm"
-          className="w-full gap-2"
-          onClick={handleTriggerPipeline}
-          disabled={isDeploying || disconnected}
-        >
-          <Rocket className="w-4 h-4" />
-          {isDeploying ? "Building..." : "Build & Push via Jenkins"}
-        </Button>
-      )}
 
       {/* Info text */}
       <p className="text-xs text-muted-foreground text-center mt-3 italic">
