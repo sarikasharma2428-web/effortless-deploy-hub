@@ -2,6 +2,7 @@
 AutoDeployX Backend Tracking Service
 Real-time metrics from Jenkins, Docker Hub, and deployments
 WITH WebSocket support for instant updates
+WITH JSON file persistence for metrics
 """
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -9,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime, timedelta
 from typing import Optional, List
+from pathlib import Path
 import httpx
 import os
 import json
@@ -29,6 +31,68 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# =============================================
+# JSON FILE PERSISTENCE
+# =============================================
+
+DATA_DIR = Path("/app/data")
+METRICS_FILE = DATA_DIR / "metrics.json"
+LOGS_FILE = DATA_DIR / "logs.json"
+
+def ensure_data_dir():
+    """Create data directory if not exists"""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+def load_persisted_data():
+    """Load metrics and logs from JSON files"""
+    global pipeline_status, deployment_logs, kubernetes_state
+    
+    ensure_data_dir()
+    
+    # Load metrics
+    if METRICS_FILE.exists():
+        try:
+            with open(METRICS_FILE, "r") as f:
+                data = json.load(f)
+                pipeline_status.update(data.get("pipeline_status", {}))
+                kubernetes_state.update(data.get("kubernetes_state", {}))
+                print(f"[PERSIST] Loaded metrics: {pipeline_status['total']} pipelines")
+        except Exception as e:
+            print(f"[PERSIST] Error loading metrics: {e}")
+    
+    # Load logs
+    if LOGS_FILE.exists():
+        try:
+            with open(LOGS_FILE, "r") as f:
+                data = json.load(f)
+                deployment_logs.extend(data.get("logs", [])[:100])
+                print(f"[PERSIST] Loaded {len(deployment_logs)} logs")
+        except Exception as e:
+            print(f"[PERSIST] Error loading logs: {e}")
+
+def save_persisted_data():
+    """Save metrics and logs to JSON files"""
+    ensure_data_dir()
+    
+    try:
+        # Save metrics
+        with open(METRICS_FILE, "w") as f:
+            json.dump({
+                "pipeline_status": pipeline_status,
+                "kubernetes_state": kubernetes_state,
+                "saved_at": datetime.now().isoformat()
+            }, f, indent=2)
+        
+        # Save logs (keep last 100)
+        with open(LOGS_FILE, "w") as f:
+            json.dump({
+                "logs": deployment_logs[:100],
+                "saved_at": datetime.now().isoformat()
+            }, f, indent=2)
+    except Exception as e:
+        print(f"[PERSIST] Error saving data: {e}")
 
 
 # =============================================
@@ -82,7 +146,7 @@ manager = ConnectionManager()
 
 
 # =============================================
-# IN-MEMORY STATE STORAGE
+# IN-MEMORY STATE STORAGE (with persistence)
 # =============================================
 
 pipeline_status = {
@@ -90,7 +154,10 @@ pipeline_status = {
     "active": 0,
     "success": 0,
     "failed": 0,
-    "builds": []
+    "builds": [],  # Each build has { timestamp, status, ... }
+    "this_month_total": 0,
+    "this_month_success": 0,
+    "this_month_failed": 0
 }
 
 deployment_logs = []
@@ -313,14 +380,22 @@ async def update_jenkins_status(status_update: PipelineStatus):
     """Receive pipeline status updates from Jenkins"""
     global current_pipeline
     
+    now = datetime.now()
+    
+    # Update totals
     pipeline_status["total"] += 1
+    
+    # Update this_month counters
+    pipeline_status["this_month_total"] += 1
     
     if status_update.status == "success":
         pipeline_status["success"] += 1
+        pipeline_status["this_month_success"] += 1
         if pipeline_status["active"] > 0:
             pipeline_status["active"] -= 1
     elif status_update.status == "failure":
         pipeline_status["failed"] += 1
+        pipeline_status["this_month_failed"] += 1
         if pipeline_status["active"] > 0:
             pipeline_status["active"] -= 1
     elif status_update.status == "running":
@@ -334,20 +409,20 @@ async def update_jenkins_status(status_update: PipelineStatus):
     current_pipeline["branch"] = status_update.branch or "main"
     
     if status_update.status == "running" and not current_pipeline["startTime"]:
-        current_pipeline["startTime"] = datetime.now().strftime("%H:%M:%S")
+        current_pipeline["startTime"] = now.strftime("%H:%M:%S")
     
     # Calculate duration if completed
     if status_update.status in ["success", "failure"]:
         current_pipeline["duration"] = f"{random.randint(30, 180)}s"
     
-    # Add to build history
+    # Add to build history with timestamp
     build_entry = {
         "pipeline_name": status_update.pipeline_name,
         "build_number": status_update.build_number or pipeline_status["total"],
         "status": status_update.status,
         "stage": status_update.stage,
         "branch": status_update.branch or "main",
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": now.isoformat(),
         "message": status_update.message,
         "duration": random.randint(30, 300)
     }
@@ -356,12 +431,15 @@ async def update_jenkins_status(status_update: PipelineStatus):
     
     # Add log entry
     log_entry = {
-        "timestamp": datetime.now().strftime("%H:%M:%S"),
+        "timestamp": now.strftime("%H:%M:%S"),
         "level": "success" if status_update.status == "success" else "error" if status_update.status == "failure" else "info",
         "message": status_update.message or f"Pipeline {status_update.pipeline_name} - {status_update.status}"
     }
     deployment_logs.insert(0, log_entry)
     deployment_logs[:100]
+    
+    # 💾 PERSIST to JSON file
+    save_persisted_data()
     
     # 🔥 BROADCAST to all WebSocket clients
     await broadcast_state_update("pipeline_status", {
@@ -545,16 +623,46 @@ async def complete_manual_deployment(image_tag: str):
 
 
 # =============================================
-# METRICS ENDPOINTS
+# METRICS ENDPOINTS (with month filtering)
 # =============================================
+
+def get_this_month_stats():
+    """Calculate stats for current month from build history"""
+    now = datetime.now()
+    current_month = now.month
+    current_year = now.year
+    
+    this_month_total = 0
+    this_month_success = 0
+    this_month_failed = 0
+    
+    for build in pipeline_status["builds"]:
+        try:
+            ts = build.get("timestamp", "")
+            if ts:
+                build_date = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                if build_date.month == current_month and build_date.year == current_year:
+                    this_month_total += 1
+                    if build["status"] == "success":
+                        this_month_success += 1
+                    elif build["status"] == "failure":
+                        this_month_failed += 1
+        except:
+            pass
+    
+    return this_month_total, this_month_success, this_month_failed
 
 @app.get("/metrics/deployments")
 async def get_deployments():
+    this_month_total, this_month_success, this_month_failed = get_this_month_stats()
+    
     return {
         "total": pipeline_status["total"],
-        "this_month": pipeline_status["total"],
+        "this_month": this_month_total,
         "success": pipeline_status["success"],
-        "failed": pipeline_status["failed"]
+        "failed": pipeline_status["failed"],
+        "this_month_success": this_month_success,
+        "this_month_failed": this_month_failed
     }
 
 
@@ -587,10 +695,18 @@ async def get_pipelines():
 
 @app.get("/metrics/docker-images")
 async def get_docker_images():
+    """Get docker images with token authentication to avoid rate limits"""
+    headers = {}
+    
+    # Use DockerHub token if available (avoids rate limiting)
+    if DOCKERHUB_TOKEN:
+        headers["Authorization"] = f"Bearer {DOCKERHUB_TOKEN}"
+    
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"https://hub.docker.com/v2/repositories/{DOCKERHUB_USER}/{DOCKERHUB_REPO}/tags/",
+                headers=headers,
                 timeout=10.0
             )
             if response.status_code == 200:
@@ -599,8 +715,11 @@ async def get_docker_images():
                     "count": data.get("count", 0),
                     "source": "DockerHub",
                     "repository": f"{DOCKERHUB_USER}/{DOCKERHUB_REPO}",
-                    "tags": [t.get("name") for t in data.get("results", [])[:10]]
+                    "tags": [t.get("name") for t in data.get("results", [])[:10]],
+                    "authenticated": bool(DOCKERHUB_TOKEN)
                 }
+            elif response.status_code == 429:
+                print(f"DockerHub rate limit hit. Add DOCKERHUB_TOKEN to .env")
     except Exception as e:
         print(f"Docker Hub API error: {e}")
     
@@ -608,7 +727,8 @@ async def get_docker_images():
         "count": 0,
         "source": "DockerHub",
         "repository": f"{DOCKERHUB_USER}/{DOCKERHUB_REPO}",
-        "tags": []
+        "tags": [],
+        "authenticated": bool(DOCKERHUB_TOKEN)
     }
 
 
@@ -770,10 +890,18 @@ async def trigger_pipeline(request: TriggerRequest):
 
 @app.get("/docker/images")
 async def get_docker_images_list():
+    """Get docker images list with token authentication"""
+    headers = {}
+    
+    # Use DockerHub token if available (avoids rate limiting)
+    if DOCKERHUB_TOKEN:
+        headers["Authorization"] = f"Bearer {DOCKERHUB_TOKEN}"
+    
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"https://hub.docker.com/v2/repositories/{DOCKERHUB_USER}/{DOCKERHUB_REPO}/tags/",
+                headers=headers,
                 timeout=10.0
             )
             if response.status_code == 200:
@@ -789,15 +917,21 @@ async def get_docker_images_list():
                 return {
                     "images": images,
                     "repository": f"{DOCKERHUB_USER}/{DOCKERHUB_REPO}",
-                    "total": data.get("count", 0)
+                    "total": data.get("count", 0),
+                    "authenticated": bool(DOCKERHUB_TOKEN)
                 }
+            elif response.status_code == 429:
+                print(f"[DockerHub] Rate limit hit! Set DOCKERHUB_TOKEN in .env")
+            elif response.status_code == 404:
+                print(f"[DockerHub] Repo not found: {DOCKERHUB_USER}/{DOCKERHUB_REPO}")
     except Exception as e:
         print(f"Docker Hub API error: {e}")
     
     return {
         "images": [],
         "repository": f"{DOCKERHUB_USER}/{DOCKERHUB_REPO}",
-        "total": 0
+        "total": 0,
+        "authenticated": bool(DOCKERHUB_TOKEN)
     }
 
 
@@ -926,6 +1060,40 @@ async def get_jenkins_job(job_name: str):
         print(f"Jenkins job API error: {e}")
     
     raise HTTPException(status_code=404, detail="Job not found or Jenkins unavailable")
+
+
+# =============================================
+# STARTUP & SHUTDOWN EVENTS
+# =============================================
+
+@app.on_event("startup")
+async def startup_event():
+    """Load persisted data on startup"""
+    print("🚀 AutoDeployX Backend starting...")
+    load_persisted_data()
+    
+    # Reset monthly counters if new month
+    now = datetime.now()
+    for build in pipeline_status["builds"]:
+        try:
+            ts = build.get("timestamp", "")
+            if ts:
+                build_date = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                # If last build was from previous month, reset active count
+                if build_date.month != now.month or build_date.year != now.year:
+                    pipeline_status["active"] = 0
+                break
+        except:
+            pass
+    
+    print(f"✅ Loaded {pipeline_status['total']} total pipelines, {len(deployment_logs)} logs")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Save data on shutdown"""
+    print("💾 Saving data before shutdown...")
+    save_persisted_data()
+    print("👋 AutoDeployX Backend stopped")
 
 
 if __name__ == "__main__":
