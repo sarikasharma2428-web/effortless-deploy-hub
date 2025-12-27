@@ -1,5 +1,9 @@
-import { Server, Layers, Box, RotateCcw, CheckCircle, XCircle, Loader2, Activity } from "lucide-react";
+import { Server, Layers, Box, RotateCcw, CheckCircle, XCircle, Loader2, Activity, Rocket, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useState } from "react";
+import { toast } from "sonner";
 
 interface Pod {
   name: string;
@@ -21,9 +25,13 @@ interface DeploymentSectionProps {
   currentVersion: string;
   pods: Pod[];
   rolloutHistory: RolloutEntry[];
+  availableTags?: string[];
   className?: string;
   disconnected?: boolean;
+  onManualDeploy?: (imageTag: string) => Promise<void>;
 }
+
+const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
 export function DeploymentSection({
   cluster,
@@ -32,9 +40,14 @@ export function DeploymentSection({
   currentVersion,
   pods,
   rolloutHistory,
+  availableTags = [],
   className,
   disconnected = false,
+  onManualDeploy,
 }: DeploymentSectionProps) {
+  const [selectedTag, setSelectedTag] = useState<string>("");
+  const [isDeploying, setIsDeploying] = useState(false);
+
   const healthyPods = pods.filter(p => p.status === 'running').length;
   const totalPods = pods.length;
 
@@ -43,6 +56,40 @@ export function DeploymentSection({
     pending: <Loader2 className="w-3 h-3 text-warning animate-spin" />,
     failed: <XCircle className="w-3 h-3 text-destructive" />,
     terminated: <XCircle className="w-3 h-3 text-muted-foreground" />,
+  };
+
+  const handleManualDeploy = async () => {
+    if (!selectedTag) {
+      toast.error("Select an image tag first");
+      return;
+    }
+
+    setIsDeploying(true);
+    try {
+      if (onManualDeploy) {
+        await onManualDeploy(selectedTag);
+      } else {
+        // Default API call
+        const response = await fetch(`${API_BASE_URL}/deployments/manual`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image_tag: selectedTag, namespace }),
+        });
+        
+        if (!response.ok) throw new Error('Deployment failed');
+        
+        const data = await response.json();
+        toast.success("Deployment initiated!", {
+          description: `Deploying ${selectedTag} via kubectl set image`,
+        });
+      }
+    } catch (error) {
+      toast.error("Deployment failed", {
+        description: error instanceof Error ? error.message : "Check backend connection",
+      });
+    } finally {
+      setIsDeploying(false);
+    }
   };
 
   return (
@@ -86,6 +133,64 @@ export function DeploymentSection({
           Current Version
         </p>
         <p className="text-sm font-mono text-primary font-medium">{currentVersion}</p>
+      </div>
+
+      {/* Manual Deploy Section */}
+      <div className="mb-4 p-4 bg-secondary/30 border border-border/30">
+        <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+          <Rocket className="w-3 h-3" />
+          Manual Deploy (Existing Image)
+        </p>
+        
+        <div className="flex gap-2 mb-2">
+          <Select value={selectedTag} onValueChange={setSelectedTag} disabled={disconnected}>
+            <SelectTrigger className="flex-1 h-8 text-xs">
+              <SelectValue placeholder="Select image tag..." />
+            </SelectTrigger>
+            <SelectContent>
+              {availableTags.length > 0 ? (
+                availableTags.map((tag) => (
+                  <SelectItem key={tag} value={tag} className="text-xs">
+                    {tag}
+                  </SelectItem>
+                ))
+              ) : (
+                <>
+                  <SelectItem value="latest">latest</SelectItem>
+                  <SelectItem value="v1">v1</SelectItem>
+                  <SelectItem value="v2">v2</SelectItem>
+                </>
+              )}
+            </SelectContent>
+          </Select>
+          
+          <Button
+            size="sm"
+            variant="glow"
+            onClick={handleManualDeploy}
+            disabled={!selectedTag || isDeploying || disconnected}
+            className="gap-1"
+          >
+            {isDeploying ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <Rocket className="w-3 h-3" />
+            )}
+            Deploy
+          </Button>
+        </div>
+
+        {/* Important Note */}
+        <div className="p-2 bg-amber-500/10 border border-amber-500/20 rounded mt-2">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="w-3 h-3 text-amber-500 mt-0.5 flex-shrink-0" />
+            <div className="text-[10px] text-muted-foreground">
+              <span className="text-amber-500 font-medium">Note:</span> This deploys an 
+              <span className="text-foreground"> existing image</span> from DockerHub. 
+              Does NOT build new images. Requires <code className="text-primary">ENABLE_REAL_K8S=true</code> in backend .env
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Pods Status */}
