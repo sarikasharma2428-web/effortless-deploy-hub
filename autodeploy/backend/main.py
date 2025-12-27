@@ -115,12 +115,29 @@ kubernetes_state = {
     "rolloutHistory": []
 }
 
-# Configuration
+# =============================================
+# CONFIGURATION - Environment Variables
+# =============================================
+
+# Jenkins CI/CD Configuration
 JENKINS_URL = os.getenv("JENKINS_URL", "http://jenkins:8080")
 JENKINS_USER = os.getenv("JENKINS_USER", "admin")
-JENKINS_TOKEN = os.getenv("JENKINS_TOKEN", "")
+JENKINS_TOKEN = os.getenv("JENKINS_TOKEN", "")  # Required for authenticated API calls
+JENKINS_JOB_NAME = os.getenv("JENKINS_JOB_NAME", "autodeployx-backend")
+
+# Docker Hub Configuration
 DOCKERHUB_USER = os.getenv("DOCKERHUB_USER", "sarika1731")
 DOCKERHUB_REPO = os.getenv("DOCKERHUB_REPO", "autodeployx")
+DOCKERHUB_TOKEN = os.getenv("DOCKERHUB_TOKEN", "")  # Optional: for private repos
+
+# Kubernetes/Minikube Configuration
+K8S_NAMESPACE = os.getenv("K8S_NAMESPACE", "default")
+K8S_DEPLOYMENT_NAME = os.getenv("K8S_DEPLOYMENT_NAME", "autodeployx-app")
+MINIKUBE_PROFILE = os.getenv("MINIKUBE_PROFILE", "minikube")
+
+# Feature Flags
+ENABLE_REAL_JENKINS = os.getenv("ENABLE_REAL_JENKINS", "false").lower() == "true"
+ENABLE_REAL_K8S = os.getenv("ENABLE_REAL_K8S", "false").lower() == "true"
 
 
 # =============================================
@@ -240,10 +257,49 @@ async def websocket_endpoint(websocket: WebSocket):
 
 @app.get("/health")
 async def health_check():
+    """Health check with service connectivity status"""
+    jenkins_status = "unknown"
+    dockerhub_status = "unknown"
+    
+    # Check Jenkins connectivity
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{JENKINS_URL}/api/json", timeout=3.0)
+            jenkins_status = "connected" if response.status_code == 200 else "auth_required"
+    except Exception:
+        jenkins_status = "disconnected"
+    
+    # Check DockerHub connectivity
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"https://hub.docker.com/v2/repositories/{DOCKERHUB_USER}/{DOCKERHUB_REPO}/",
+                timeout=3.0
+            )
+            dockerhub_status = "connected" if response.status_code == 200 else "not_found"
+    except Exception:
+        dockerhub_status = "disconnected"
+    
     return {
         "status": "healthy",
         "service": "AutoDeployX Tracking API",
         "websocket_clients": len(manager.active_connections),
+        "integrations": {
+            "jenkins": {
+                "status": jenkins_status,
+                "url": JENKINS_URL,
+                "real_mode": ENABLE_REAL_JENKINS
+            },
+            "dockerhub": {
+                "status": dockerhub_status,
+                "repository": f"{DOCKERHUB_USER}/{DOCKERHUB_REPO}",
+            },
+            "kubernetes": {
+                "namespace": K8S_NAMESPACE,
+                "deployment": K8S_DEPLOYMENT_NAME,
+                "real_mode": ENABLE_REAL_K8S
+            }
+        },
         "timestamp": datetime.now().isoformat()
     }
 
