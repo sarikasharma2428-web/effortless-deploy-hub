@@ -1,24 +1,31 @@
 version: '3.8'
 
 services:
-  # FastAPI Backend
+  # FastAPI Backend Tracking Service (main.py with WebSocket, metrics, Jenkins callbacks)
   backend:
     build:
-      context: ./autodeploy
+      context: ./autodeploy/backend
       dockerfile: Dockerfile
     container_name: autodeployx-backend
     ports:
       - "8000:8000"
     environment:
       - JENKINS_URL=http://jenkins:8080
-      - JENKINS_USERNAME=${JENKINS_USERNAME:-admin}
-      - JENKINS_TOKEN=${JENKINS_TOKEN}
-      - DOCKER_IMAGE=${DOCKER_IMAGE:-sarika1731/autodeployx}
-      - DATABASE_URL=sqlite:///./autodeployx.db
-      - LOG_LEVEL=INFO
+      - JENKINS_USER=${JENKINS_USER:-admin}
+      - JENKINS_TOKEN=${JENKINS_TOKEN:-}
+      - JENKINS_JOB_NAME=${JENKINS_JOB_NAME:-autodeployx-backend}
+      - DOCKERHUB_USER=${DOCKERHUB_USER:-sarika1731}
+      - DOCKERHUB_REPO=${DOCKERHUB_REPO:-autodeployx}
+      - DOCKERHUB_TOKEN=${DOCKERHUB_TOKEN:-}
+      - K8S_NAMESPACE=${K8S_NAMESPACE:-default}
+      - K8S_DEPLOYMENT_NAME=${K8S_DEPLOYMENT_NAME:-autodeployx-app}
+      - ENABLE_REAL_JENKINS=${ENABLE_REAL_JENKINS:-true}
+      - ENABLE_REAL_K8S=${ENABLE_REAL_K8S:-true}
     volumes:
-      - ./autodeploy/app:/app
-      - /var/run/docker.sock:/var/run/docker.sock
+      - backend_data:/app/data
+      # Mount kubeconfig for real kubectl access (minikube)
+      - ${HOME}/.kube:/root/.kube:ro
+      - ${HOME}/.minikube:${HOME}/.minikube:ro
     depends_on:
       - jenkins
     networks:
@@ -32,22 +39,23 @@ services:
 
   # Jenkins CI/CD
   jenkins:
-    image: jenkins/jenkins:latest
+    image: jenkins/jenkins:lts
     container_name: autodeployx-jenkins
+    privileged: true
+    user: root
     ports:
       - "8080:8080"
       - "50000:50000"
     environment:
-      - JENKINS_OPTS=-Dorg.jenkinsci.plugins.matrixauth.inheritance.InheritanceStrategy=net.sf.json.JSONNull
+      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
     volumes:
       - jenkins_home:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock
-      - /usr/bin/docker:/usr/bin/docker
     networks:
       - autodeployx-net
     restart: unless-stopped
 
-  # PostgreSQL Database (optional, for production)
+  # PostgreSQL Database (for production persistence)
   postgres:
     image: postgres:15-alpine
     container_name: autodeployx-db
@@ -89,6 +97,7 @@ volumes:
   jenkins_home:
   postgres_data:
   redis_data:
+  backend_data:
 
 networks:
   autodeployx-net:
