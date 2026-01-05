@@ -1,17 +1,112 @@
 {
   "type": "app",
-  "name": "Reliability Studio",
-  "id": "sarika-reliability-studio-app",
-  "version": "0.1.0",
-  "backend": true,
-  "executable": "reliability-studio-backend",
+  "name": "Reliability Control Plane",
+  "id": "grafana-reliability-control-plane",
   "info": {
-    "description": "Unified reliability & incident response workspace for Grafana",
-    "author": { "name": "Sarika" },
-    "keywords": ["sre", "reliability", "observability", "incident", "slo"]
+    "description": "Open-source incident response and reliability platform for Grafana OSS. Brings incident management, service catalog, and SLO tracking to self-hosted Grafana - an alternative to Grafana Cloud IRM.",
+    "author": {
+      "name": "Your Organization",
+      "url": "https://github.com/your-org/reliability-control-plane"
+    },
+    "keywords": [
+      "incident management",
+      "irm",
+      "sre",
+      "reliability",
+      "slo",
+      "incident response",
+      "observability",
+      "on-call",
+      "service catalog"
+    ],
+    "logos": {
+      "small": "img/logo.svg",
+      "large": "img/logo.svg"
+    },
+    "links": [
+      {
+        "name": "Documentation",
+        "url": "https://github.com/your-org/reliability-control-plane/wiki"
+      },
+      {
+        "name": "GitHub",
+        "url": "https://github.com/your-org/reliability-control-plane"
+      },
+      {
+        "name": "Report Issue",
+        "url": "https://github.com/your-org/reliability-control-plane/issues"
+      }
+    ],
+    "screenshots": [
+      {
+        "name": "Incident Workspace",
+        "path": "img/screenshots/incident-workspace.png"
+      },
+      {
+        "name": "Incidents List",
+        "path": "img/screenshots/incidents-list.png"
+      },
+      {
+        "name": "Service Reliability",
+        "path": "img/screenshots/service-reliability.png"
+      }
+    ],
+    "version": "0.1.0",
+    "updated": "2026-01-05"
   },
+  "includes": [
+    {
+      "type": "page",
+      "name": "Incidents",
+      "path": "/a/grafana-reliability-control-plane/incidents",
+      "role": "Viewer",
+      "addToNav": true,
+      "defaultNav": true,
+      "icon": "fire"
+    },
+    {
+      "type": "page",
+      "name": "Services",
+      "path": "/a/grafana-reliability-control-plane/services",
+      "role": "Viewer",
+      "addToNav": true,
+      "icon": "apps"
+    },
+    {
+      "type": "page",
+      "name": "SLOs",
+      "path": "/a/grafana-reliability-control-plane/slos",
+      "role": "Viewer",
+      "addToNav": true,
+      "icon": "monitor"
+    },
+    {
+      "type": "page",
+      "name": "Incident Workspace",
+      "path": "/a/grafana-reliability-control-plane/incident/:id",
+      "role": "Viewer",
+      "addToNav": false
+    },
+    {
+      "type": "page",
+      "name": "Service Detail",
+      "path": "/a/grafana-reliability-control-plane/service/:id",
+      "role": "Viewer",
+      "addToNav": false
+    }
+  ],
   "dependencies": {
     "grafanaDependency": ">=10.0.0",
     "plugins": []
-  }
+  },
+  "backend": true,
+  "executable": "reliability-control-plane-backend",
+  "routes": [
+    {
+      "path": "api/*",
+      "method": "*",
+      "url": "http://localhost:9000",
+      "reqRole": "Viewer"
+    }
+  ]
 }

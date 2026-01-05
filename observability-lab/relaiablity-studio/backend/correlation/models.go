@@ -1,22 +1,19 @@
 package correlation
 
-type Incident struct {
-	ID          string
-	Service     string
-	RootCause   string
-	Severity    string
-	Timeline    []Event
-	Impact      Impact
+import "reliability-studio-backend/models"
+
+type IncidentContext struct {
+    Incident   models.Incident `json:"incident"`
+    Timeline   []Event         `json:"timeline"`
+    Impact     ImpactSummary   `json:"impact"`
+    Metrics    any             `json:"metrics"`
+    Logs       any             `json:"logs"`
+    Traces     any             `json:"traces"`
+    Kubernetes any             `json:"kubernetes"`
 }
 
 type Event struct {
-	Time    string
-	Source  string
-	Message string
-}
-
-type Impact struct {
-	SLOAffected bool
-	ErrorRate   float64
-	BadPods     int
+    Time    string `json:"time"`
+    Source  string `json:"source"`
+    Message string `json:"message"`
 }
