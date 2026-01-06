@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -43,11 +44,11 @@ func Connect(config *Config) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Configure connection pool
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(5)
-	db.SetConnMaxLifetime(5 * time.Minute)
-	db.SetConnMaxIdleTime(10 * time.Minute)
+	// Configure connection pool - FIXED: Optimized for better concurrency
+	db.SetMaxOpenConns(50)
+	db.SetMaxIdleConns(10)
+	db.SetConnMaxLifetime(30 * time.Minute)
+	db.SetConnMaxIdleTime(15 * time.Minute)
 
 	// Verify connection
 	if err := db.Ping(); err != nil {
@@ -215,8 +216,9 @@ func SeedDefaultData(db *sql.DB) error {
 		{"payment-service", "Payment processing service", "commerce"},
 	}
 
+	var err error
 	for _, svc := range services {
-		_, err := db.Exec(`
+		_, err = db.Exec(`
 			INSERT INTO services (name, description, owner_team, status)
 			VALUES ($1, $2, $3, 'healthy')
 			ON CONFLICT (name) DO NOTHING
@@ -228,7 +230,7 @@ func SeedDefaultData(db *sql.DB) error {
 	}
 
 	// Insert default admin user
-	_, err := db.Exec(`
+	_, err = db.Exec(`
 		INSERT INTO users (email, username, password_hash, roles)
 		VALUES ('admin@reliability.io', 'admin', '$2a$10$rZ1qJ8Z5X7X7X7X7X7X7X7', '["admin", "editor", "viewer"]'::jsonb)
 		ON CONFLICT (email) DO NOTHING
@@ -238,13 +240,38 @@ func SeedDefaultData(db *sql.DB) error {
 		return fmt.Errorf("failed to seed admin user: %w", err)
 	}
 
-	log.Println("✅ Default data seeded successfully")
+	// Insert default SLOs for the services
+	for _, svcName := range []string{"frontend-web", "api-gateway"} {
+		var serviceID string
+		err := db.QueryRow("SELECT id FROM services WHERE name = $1", svcName).Scan(&serviceID)
+		if err == nil {
+			_, _ = db.Exec(`
+				INSERT INTO slos (service_id, name, description, target_percentage, window_days, sli_type, query)
+				VALUES ($1, $2, $3, $4, $5, $6, $7)
+				ON CONFLICT (service_id, name) DO NOTHING
+			`, serviceID, "Availability", "Percentage of successful requests", 99.9, 30, "availability", 
+			   fmt.Sprintf(`sum(rate(http_requests_total{service="%s",status!~"5.."}[5m])) / sum(rate(http_requests_total{service="%s"}[5m])) * 100`, svcName, svcName))
+		}
+	}
+
+	// Insert an initial incident for testing
+	var frontendID string
+	err = db.QueryRow("SELECT id FROM services WHERE name = 'frontend-web'").Scan(&frontendID)
+	if err == nil {
+		_, _ = db.Exec(`
+			INSERT INTO incidents (title, description, severity, status, service_id, started_at)
+			VALUES ($1, $2, $3, $4, $5, NOW() - INTERVAL '10 minutes')
+			ON CONFLICT DO NOTHING
+		`, "High Error Rate in Frontend", "Spike in 5xx errors detected via Prometheus", "critical", "active", frontendID)
+	}
+
+	log.Println("✅ Default data (services, users, SLOs, incidents) seeded successfully")
 	return nil
 }
 
 // HealthCheck performs a database health check
 func HealthCheck(db *sql.DB) error {
-	ctx, cancel := contextWithTimeout(5 * time.Second)
+	ctx, cancel := contextWithTimeout(15 * time.Second) // FIXED: Increased timeout
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {

@@ -1,19 +1,42 @@
 package correlation
 
-import "reliability-studio-backend/models"
-
-type IncidentContext struct {
-    Incident   models.Incident `json:"incident"`
-    Timeline   []Event         `json:"timeline"`
-    Impact     ImpactSummary   `json:"impact"`
-    Metrics    any             `json:"metrics"`
-    Logs       any             `json:"logs"`
-    Traces     any             `json:"traces"`
-    Kubernetes any             `json:"kubernetes"`
-}
+import (
+	"time"
+)
 
 type Event struct {
-    Time    string `json:"time"`
-    Source  string `json:"source"`
-    Message string `json:"message"`
+	Time    string `json:"time"`
+	Source  string `json:"source"`
+	Message string `json:"message"`
+}
+
+type ImpactSummary struct {
+	SLOAffected bool    `json:"slo_affected"`
+	ErrorRate   float64 `json:"error_rate"`
+	BadPods     int     `json:"bad_pods"`
+}
+
+type Anomaly struct {
+	Type   string            `json:"type"`
+	Metric string            `json:"metric"`
+	Value  any               `json:"value"`
+	Labels map[string]string `json:"labels"`
+}
+
+type Impact struct {
+	SLOAffected bool    `json:"slo_affected"`
+	ErrorRate   float64 `json:"error_rate"`
+	BadPods     int     `json:"bad_pods"`
+}
+
+type TimeRange struct {
+	Start time.Time
+	End   time.Time
+}
+
+type Evidence struct {
+	Type      string
+	Source    string
+	Data      any
+	Timestamp time.Time
 }

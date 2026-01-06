@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 )
 
@@ -88,9 +89,12 @@ func (l *LokiClient) QueryLogs(ctx context.Context, query string, start, end tim
 				continue
 			}
 
-			// Parse timestamp (nanoseconds)
-			timestampNano, _ := time.Parse("", value[0])
-			timestamp, _ := time.Parse(time.RFC3339Nano, value[0])
+			// FIXED: Parse timestamp (Unix nanoseconds, not RFC3339)
+			nsec, err := strconv.ParseInt(value[0], 10, 64)
+			if err != nil {
+				continue
+			}
+			timestamp := time.Unix(0, nsec)
 
 			// Parse log message
 			message := value[1]
@@ -165,6 +169,7 @@ func (l *LokiClient) SearchLogs(ctx context.Context, service, searchText string,
 func (l *LokiClient) GetLogStats(ctx context.Context, service string, window time.Duration) (map[string]int, error) {
 	end := time.Now()
 	start := end.Add(-window)
+	_ = start // Keep it for now or remove if not needed by the loop
 
 	// Query for different log levels
 	levels := []string{"error", "warn", "info", "debug"}

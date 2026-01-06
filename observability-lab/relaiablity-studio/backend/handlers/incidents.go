@@ -4,8 +4,8 @@ import (
     "encoding/json"
     "net/http"
     "github.com/gorilla/mux"
-    "reliability-control-plane-backend/models"
-    "reliability-control-plane-backend/services"
+    "github.com/sarikasharma2428-web/reliability-studio/models"
+    "github.com/sarikasharma2428-web/reliability-studio/services"
 )
 
 // GET /api/incidents

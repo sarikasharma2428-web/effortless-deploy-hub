@@ -2,6 +2,24 @@ version: "3.8"
 
 services:
 
+  # PostgreSQL Database - CRITICAL FIX #1
+  postgres:
+    image: postgres:15-alpine
+    container_name: reliability-postgres
+    environment:
+      POSTGRES_DB: reliability_studio
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   sample-app:
     build: ./sample-app
     container_name: sample-app
@@ -61,7 +79,7 @@ services:
     ports:
       - "9093:9093"
 
-  # FIXED: Backend with proper build context
+  # Backend with database dependency
   backend:
     build:
       context: ./relaiablity-studio/backend
@@ -73,12 +91,24 @@ services:
       - PROMETHEUS_URL=http://prometheus:9090
       - LOKI_URL=http://loki:3100
       - TEMPO_URL=http://tempo:3200
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=reliability_studio
+      - DB_SSLMODE=disable
     depends_on:
-      - prometheus
-      - loki
-      - tempo
+      postgres:
+        condition: service_healthy
+      prometheus:
+        condition: service_started
+      loki:
+        condition: service_started
+      tempo:
+        condition: service_started
     networks:
       - default
+    restart: unless-stopped
 
   grafana:
     image: grafana/grafana:latest
@@ -92,9 +122,7 @@ services:
       - GF_SERVER_ROOT_URL=http://localhost:3000
     volumes:
       # Mount plugin directory
-      - ./relaiablity-studio/public:/var/lib/grafana/plugins/reliability-studio
-      # Mount provisioning
-      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./relaiablity-studio/dist:/var/lib/grafana/plugins/reliability-studio
     depends_on:
       - prometheus
       - loki
@@ -103,6 +131,7 @@ services:
 
 volumes:
   tempo-data:
+  postgres-data:
 
 networks:
   default:

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+	"github.com/sarikasharma2428-web/reliability-studio/clients"
 )
 
 type SLOService struct {
@@ -13,20 +14,8 @@ type SLOService struct {
 }
 
 type PrometheusQueryClient interface {
-	Query(ctx context.Context, query string, timestamp time.Time) (*QueryResult, error)
-	QueryRange(ctx context.Context, query string, start, end time.Time, step time.Duration) (*QueryResult, error)
-}
-
-type QueryResult struct {
-	Status string
-	Data   struct {
-		ResultType string
-		Result     []struct {
-			Metric map[string]string
-			Value  []interface{}
-			Values [][]interface{}
-		}
-	}
+	Query(ctx context.Context, query string, timestamp time.Time) (*clients.PrometheusResponse, error)
+	QueryRange(ctx context.Context, query string, start, end time.Time, step time.Duration) (*clients.PrometheusResponse, error)
 }
 
 type SLO struct {
@@ -71,7 +60,8 @@ func (s *SLOService) CalculateSLO(ctx context.Context, sloID string) (*SLO, erro
 
 	// Calculate time window
 	end := time.Now()
-	start := end.Add(-time.Duration(slo.WindowDays) * 24 * time.Hour)
+	// start := end.Add(-time.Duration(slo.WindowDays) * 24 * time.Hour) 
+	// For instant query, we use the end time of the window
 
 	// Execute Prometheus query
 	result, err := s.promClient.Query(ctx, slo.Query, end)
@@ -161,6 +151,43 @@ func (s *SLOService) CalculateAllSLOs(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// GetSLOHistory returns historical compliance data for an SLO
+func (s *SLOService) GetSLOHistory(ctx context.Context, sloID string) ([]map[string]interface{}, error) {
+	slo, err := s.GetSLO(ctx, sloID)
+	if err != nil {
+		return nil, err
+	}
+
+	end := time.Now()
+	start := end.Add(-24 * time.Hour)
+	step := 15 * time.Minute
+
+	result, err := s.promClient.QueryRange(ctx, slo.Query, start, end, step)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query history: %w", err)
+	}
+
+	history := make([]map[string]interface{}, 0)
+	if len(result.Data.Result) > 0 {
+		for _, v := range result.Data.Result[0].Values {
+			if len(v) < 2 {
+				continue
+			}
+			ts := v[0].(float64)
+			valStr := v[1].(string)
+			var val float64
+			fmt.Sscanf(valStr, "%f", &val)
+
+			history = append(history, map[string]interface{}{
+				"timestamp": time.Unix(int64(ts), 0),
+				"value":     val,
+			})
+		}
+	}
+
+	return history, nil
 }
 
 // GetSLO retrieves an SLO by ID
@@ -288,7 +315,7 @@ func (s *SLOService) CalculateBurnRate(ctx context.Context, sloID string) ([]SLO
 	end := time.Now()
 
 	for _, window := range windows {
-		start := end.Add(-window.duration)
+		_ = end.Add(-window.duration) // start variable unused
 		
 		// Query error budget consumption rate
 		query := fmt.Sprintf(`
@@ -398,48 +425,4 @@ func (s *SLOService) DeleteSLO(ctx context.Context, sloID string) error {
 	}
 
 	return nil
-}
-
-// GetSLOHistory retrieves historical SLO data
-func (s *SLOService) GetSLOHistory(ctx context.Context, sloID string, days int) ([]map[string]interface{}, error) {
-	slo, err := s.GetSLO(ctx, sloID)
-	if err != nil {
-		return nil, err
-	}
-
-	end := time.Now()
-	start := end.Add(-time.Duration(days) * 24 * time.Hour)
-	step := 1 * time.Hour
-
-	result, err := s.promClient.QueryRange(ctx, slo.Query, start, end, step)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query SLO history: %w", err)
-	}
-
-	var history []map[string]interface{}
-	for _, r := range result.Data.Result {
-		for _, v := range r.Values {
-			if len(v) < 2 {
-				continue
-			}
-
-			timestamp := time.Unix(int64(v[0].(float64)), 0)
-			valueStr, ok := v[1].(string)
-			if !ok {
-				continue
-			}
-
-			var value float64
-			if _, err := fmt.Sscanf(valueStr, "%f", &value); err != nil {
-				continue
-			}
-
-			history = append(history, map[string]interface{}{
-				"timestamp": timestamp,
-				"value":     value * 100, // Convert to percentage
-			})
-		}
-	}
-
-	return history, nil
 }

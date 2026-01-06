@@ -5,8 +5,8 @@ import (
     "net/http"
     "github.com/gorilla/mux"
     "go.uber.org/zap"
-    "reliability-control-plane-backend/models"
-    "reliability-control-plane-backend/services"
+    "github.com/sarikasharma2428-web/reliability-studio/models"
+    "github.com/sarikasharma2428-web/reliability-studio/services"
 )
 
 var (
@@ -29,7 +29,7 @@ func InitHandlers(is *services.IncidentService, ss *services.ServiceService, slo
 func HealthCheck(w http.ResponseWriter, r *http.Request) {
     json.NewEncoder(w).Encode(map[string]string{
         "status": "healthy",
-        "service": "reliability-control-plane-backend",
+        "service": "github.com/sarikasharma2428-web/reliability-studio",
     })
 }
 

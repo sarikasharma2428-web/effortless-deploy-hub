@@ -39,10 +39,15 @@ func NewPrometheusClient(baseURL string) *PrometheusClient {
 }
 
 // Query executes an instant query
-func (c *PrometheusClient) Query(ctx context.Context, query string) (*PrometheusResponse, error) {
+func (c *PrometheusClient) Query(ctx context.Context, query string, timestamp time.Time) (*PrometheusResponse, error) {
 	params := url.Values{}
 	params.Add("query", query)
-	params.Add("time", fmt.Sprintf("%d", time.Now().Unix()))
+	
+	if !timestamp.IsZero() {
+		params.Add("time", fmt.Sprintf("%d", timestamp.Unix()))
+	} else {
+		params.Add("time", fmt.Sprintf("%d", time.Now().Unix()))
+	}
 
 	reqURL := fmt.Sprintf("%s/api/v1/query?%s", c.BaseURL, params.Encode())
 
@@ -113,13 +118,18 @@ func (c *PrometheusClient) GetErrorRate(ctx context.Context, service string) (fl
 		rate(http_requests_total{service="%s"}[5m]) * 100
 	`, service, service)
 
-	resp, err := c.Query(ctx, query)
+	resp, err := c.Query(ctx, query, time.Time{})
 	if err != nil {
 		return 0, err
 	}
 
 	if len(resp.Data.Result) == 0 {
 		return 0, nil
+	}
+
+	// FIXED: Check array length before accessing
+	if len(resp.Data.Result[0].Value) < 2 {
+		return 0, fmt.Errorf("invalid response format")
 	}
 
 	value, ok := resp.Data.Result[0].Value[1].(string)
@@ -139,13 +149,18 @@ func (c *PrometheusClient) GetLatencyP95(ctx context.Context, service string) (f
 		)
 	`, service)
 
-	resp, err := c.Query(ctx, query)
+	resp, err := c.Query(ctx, query, time.Time{})
 	if err != nil {
 		return 0, err
 	}
 
 	if len(resp.Data.Result) == 0 {
 		return 0, nil
+	}
+
+	// FIXED: Check array length before accessing
+	if len(resp.Data.Result[0].Value) < 2 {
+		return 0, fmt.Errorf("invalid response format")
 	}
 
 	value, ok := resp.Data.Result[0].Value[1].(string)
@@ -161,13 +176,18 @@ func (c *PrometheusClient) GetLatencyP95(ctx context.Context, service string) (f
 func (c *PrometheusClient) GetRequestRate(ctx context.Context, service string) (float64, error) {
 	query := fmt.Sprintf(`rate(http_requests_total{service="%s"}[5m])`, service)
 
-	resp, err := c.Query(ctx, query)
+	resp, err := c.Query(ctx, query, time.Time{})
 	if err != nil {
 		return 0, err
 	}
 
 	if len(resp.Data.Result) == 0 {
 		return 0, nil
+	}
+
+	// FIXED: Check array length before accessing
+	if len(resp.Data.Result[0].Value) < 2 {
+		return 0, fmt.Errorf("invalid response format")
 	}
 
 	value, ok := resp.Data.Result[0].Value[1].(string)
@@ -189,13 +209,18 @@ func (c *PrometheusClient) CalculateSLO(ctx context.Context, service string, win
 		) * 100
 	`, service, windowDays, service, windowDays)
 
-	resp, err := c.Query(ctx, query)
+	resp, err := c.Query(ctx, query, time.Time{})
 	if err != nil {
 		return 0, err
 	}
 
 	if len(resp.Data.Result) == 0 {
 		return 0, nil
+	}
+
+	// FIXED: Check array length before accessing
+	if len(resp.Data.Result[0].Value) < 2 {
+		return 0, fmt.Errorf("invalid response format")
 	}
 
 	value, ok := resp.Data.Result[0].Value[1].(string)
@@ -206,4 +231,26 @@ func (c *PrometheusClient) CalculateSLO(ctx context.Context, service string, win
 	var slo float64
 	fmt.Sscanf(value, "%f", &slo)
 	return slo, nil
+}
+
+// Health checks if Prometheus is reachable and healthy
+func (c *PrometheusClient) Health(ctx context.Context) error {
+	reqURL := fmt.Sprintf("%s/-/healthy", c.BaseURL)
+	
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create health check request: %w", err)
+	}
+	
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("prometheus unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("prometheus unhealthy: status %d", resp.StatusCode)
+	}
+	
+	return nil
 }

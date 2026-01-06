@@ -1,280 +1,334 @@
-# Reliability Studio Backend
+# Reliability Studio 🎯
 
-A comprehensive reliability control plane for incident management, SLO tracking, and service observability.
+**Reliability Studio** is an open-source Grafana App Plugin that provides a unified incident response and reliability platform for teams using Grafana OSS. Think of it as an alternative to Grafana Cloud IRM for self-hosted environments.
 
-## 🏗️ Architecture
+## 🌟 Features
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Reliability Studio                       │
-├──────────────────┬──────────────────┬──────────────────────┤
-│   Frontend UI    │   Backend API    │   Observability      │
-│   (React/Next)   │   (Go/Postgres)  │   (Prometheus/Loki)  │
-└──────────────────┴──────────────────┴──────────────────────┘
-```
+### Core Capabilities
+- **📊 Incident Management** - Full lifecycle management from detection to resolution
+- **🎯 SLO Tracking** - Service Level Objective monitoring with error budget tracking
+- **🔗 Auto-Correlation** - Automatically correlates metrics, logs, traces, and K8s events
+- **📈 Service Catalog** - Centralized service reliability dashboard
+- **⏱️ Timeline** - Automatic incident timeline with all relevant telemetry
+-  **☸️ Kubernetes Integration** - Pod failures, deployments, and cluster health
+- **🔍 Root Cause Analysis** - AI-assisted incident investigation
+
+### Technical Stack
+- **Backend:** Go 1.21+ with PostgreSQL
+- **Frontend:** React 18 + TypeScript with Grafana SDK
+- **Observability:** Prometheus, Loki, Tempo integration
+- **Infrastructure:** Docker Compose for local development
+
+---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 - Docker & Docker Compose
-- Go 1.22+ (for local development)
-- PostgreSQL 15+ (if running without Docker)
+- 8GB RAM minimum
+- Ports: 3000 (Grafana), 9000 (Backend), 5432 (PostgreSQL), 9090 (Prometheus), 3100 (Loki)
 
-### Running with Docker Compose
+### Setup
 
+1. **Clone the repository**
 ```bash
-# Start all services
-docker-compose up -d
-
-# Check status
-docker-compose ps
-
-# View logs
-docker-compose logs -f backend
-
-# Stop all services
-docker-compose down
+git clone <your-repo-url>
+cd observability-lab
 ```
 
-### Services & Ports
+2. **Start all services**
+```bash
+docker-compose up -d
+```
 
-| Service     | Port | Description                |
-|-------------|------|----------------------------|
-| Backend API | 9000 | REST API                   |
-| PostgreSQL  | 5432 | Database                   |
-| Prometheus  | 9090 | Metrics collection         |
-| Loki        | 3100 | Log aggregation            |
-| Tempo       | 3200 | Distributed tracing        |
-| Grafana     | 3000 | Visualization dashboard    |
+This will start:
+- PostgreSQL (Database)
+- Prometheus (Metrics)
+- Loki (Logs)
+- Tempo (Traces)
+- Alertmanager
+- Backend API (Go)
+- Grafana (Frontend)
+- Sample App (for testing)
 
-### Local Development
+3. **Access Grafana**
+```
+http://localhost:3000
+```
+Default: Anonymous auth enabled (Admin role)
+
+4. **Access Backend API**
+```
+http://localhost:9000/health
+```
+
+5. **View Logs**
+```bash
+docker-compose logs -f backend
+```
+
+---
+
+## 🏗️ Development
+
+### Backend Development
 
 ```bash
+cd relaiablity-studio/backend
+
 # Install dependencies
-cd backend
 go mod download
 
-# Set environment variables
-export DATABASE_URL="postgres://rcp_user:changeme@localhost:5432/reliability_control_plane?sslmode=disable"
-export PROMETHEUS_URL="http://localhost:9090"
-export LOKI_URL="http://localhost:3100"
-export TEMPO_URL="http://localhost:3200"
-
-# Run migrations (creates tables)
+# Run locally (requires PostgreSQL)
+export DB_HOST=localhost
+export PROMETHEUS_URL=http://localhost:9090
+export LOKI_URL=http://localhost:3100
 go run main.go
-
-# Build and run
-go build -o backend
-./backend
 ```
 
-## 📡 API Endpoints
-
-### Incidents
+### Frontend Development
 
 ```bash
-# List all incidents
-GET /api/incidents?status=open&severity=critical
+cd relaiablity-studio
 
-# Create incident
-POST /api/incidents
-{
-  "title": "Payment Service Down",
-  "description": "500 errors on /api/payments",
-  "severity": "critical",
-  "service_ids": ["uuid-here"]
-}
+# Install dependencies
+npm install
 
-# Get incident details
-GET /api/incidents/{id}
+# Start development server
+npm run dev
 
-# Update incident
-PATCH /api/incidents/{id}
-{
-  "status": "investigating",
-  "root_cause": "Database connection pool exhausted"
-}
-
-# Get incident timeline
-GET /api/incidents/{id}/timeline
-
-# Add timeline event
-POST /api/incidents/{id}/timeline
-{
-  "type": "metric_anomaly",
-  "source": "prometheus",
-  "title": "Error rate spike detected",
-  "description": "Error rate increased to 15%"
-}
+# Build for production
+npm run build
 ```
 
-### Services
+### Database Migrations
 
+The database schema is automatically initialized on first run. See `backend/database/db.go` for schema definition.
+
+To reset database:
 ```bash
-# List services
-GET /api/services
-
-# Create service
-POST /api/services
-{
-  "name": "payment-service",
-  "team": "payments-team",
-  "repository_url": "https://github.com/org/payment-service"
-}
-
-# Get service
-GET /api/services/{id}
-
-# Get service incidents
-GET /api/services/{id}/incidents
+docker-compose down -v  # Removes volumes
+docker-compose up database -d
 ```
 
-### SLOs
+---
 
-```bash
-# List SLOs
-GET /api/slos
+## 📁 Project Structure
 
-# Create SLO
-POST /api/slos
-{
-  "service_id": "uuid-here",
-  "name": "API Availability",
-  "objective": 99.9,
-  "window_days": 30
-}
-
-# Update SLO
-PATCH /api/slos/{id}
-{
-  "error_budget_remaining": 85.5,
-  "status": "healthy"
-}
+```
+observability-lab/
+├── relaiablity-studio/          # Main plugin
+│   ├── backend/                  # Go backend
+│   │   ├── clients/              # External API clients (Prometheus, Loki, K8s)
+│   │   ├── correlation/          # Correlation engine
+│   │   ├── database/             # Database schema & operations
+│   │   ├── handlers/             # HTTP request handlers
+│   │   ├── middleware/           # Auth, logging, recovery
+│   │   ├── models/               # Data models
+│   │   ├── services/             # Business logic (SLO, incidents)
+│   │   └── main.go               # Entry point
+│   ├── src/                      # React frontend
+│   │   ├── app/                  # Main app components
+│   │   ├── panels/               # Grafana panel plugins
+│   │   ├── models/               # TypeScript interfaces
+│   │   └── utils/                # Helpers
+│   ├── plugin.json               # Grafana plugin manifest
+│   └── package.json
+├── prometheus/                   # Prometheus config
+├── loki/                         # Loki config
+├── tempo/                        # Tempo config
+├── grafana/                      # Grafana provisioning
+└── docker-compose.yml
 ```
 
-## 🗄️ Database Schema
-
-### Tables
-- **services**: Service catalog
-- **slos**: Service Level Objectives
-- **incidents**: Incident records
-- **incident_services**: Links incidents to services
-- **timeline_events**: Incident timeline
-- **incident_tasks**: Action items
+---
 
 ## 🔧 Configuration
 
-Environment variables:
+### Environment Variables
+
+Copy `.env.example` to `.env` and customize:
 
 ```bash
-DATABASE_URL=postgres://user:pass@host:5432/dbname?sslmode=disable
+# Database
+DB_HOST=postgres
+DB_NAME=reliability_studio
+DB_USER=postgres
+DB_PASSWORD=postgres
+
+# Observability
 PROMETHEUS_URL=http://prometheus:9090
 LOKI_URL=http://loki:3100
 TEMPO_URL=http://tempo:3200
+
+# Application
 PORT=9000
+JWT_SECRET=your-secure-secret-here
 ```
 
-## 📊 Observability Integration
+### Plugin Configuration
 
-The backend integrates with:
+Edit `plugin.json` to customize:
+- Plugin metadata
+- Navigation pages
+- Backend routes
+- Dependencies
 
-1. **Prometheus**: Queries metrics for SLO calculation and anomaly detection
-2. **Loki**: Analyzes logs for error patterns and root cause analysis
-3. **Tempo**: Traces distributed transactions for performance analysis
-4. **Kubernetes**: Monitors pod health and cluster events
+---
 
-## 🧪 Testing
+## 🐛 Known Issues & Fixes Applied
 
-```bash
-# Run tests
-go test ./...
+This project has undergone comprehensive debugging. Key fixes applied:
 
-# Test specific package
-go test ./services
+✅ **FIXED:** Added PostgreSQL database service  
+✅ **FIXED:** Nil pointer checks in Kubernetes client  
+✅ **FIXED:** Missing Health() methods on clients  
+✅ **FIXED:** Loki timestamp parsing (Unix nano → RFC3339)  
+✅ **FIXED:** Goroutine leaks in background jobs  
+✅ **FIXED:** Array bounds checking in Prometheus client  
+✅ **FIXED:** Added graceful shutdown handling  
+✅ **FIXED:** Grafana datasource provisioning  
+✅ **FIXED:** Missing frontend dependencies  
 
-# With coverage
-go test -cover ./...
+⚠️ **TODO:** Implement JWT authentication (currently using mock)  
+⚠️ **TODO:** Add rate limiting implementation  
+⚠️ **TODO:** Complete handler implementations  
 
-# Test API endpoints
-curl http://localhost:9000/health
-curl http://localhost:9000/api/incidents
-```
+See `AUDIT_REPORT.md` for full details.
+
+---
 
 ## 🔐 Security
 
-- CORS middleware for cross-origin requests
-- Request logging for audit trails
-- Panic recovery for graceful error handling
-- Input validation on all endpoints
-- SQL injection prevention via prepared statements
+**⚠️ IMPORTANT:** This project is in **development mode** and has several security limitations:
 
-## 📈 Next Steps
+1. **Authentication:** Currently using mock tokens - **DO NOT use in production**
+2. **CORS:** Allows all origins - Restrict in production
+3. **Database:** Default credentials - Change before deploying
+4. **API:** No rate limiting - Vulnerable to abuse
 
-### Planned Features
-1. **Automated Incident Detection**: Correlation engine that auto-creates incidents
-2. **AI-Powered Root Cause Analysis**: ML-based pattern detection
-3. **Slack/PagerDuty Integration**: Incident notifications
-4. **Grafana Authentication**: SSO integration
-5. **Postmortem Generation**: Auto-generate incident reports
-6. **SLO Burn Rate Alerts**: Proactive budget warnings
+### Hardening for Production
 
-### Development Roadmap
-- [ ] WebSocket support for real-time updates
-- [ ] GraphQL API layer
-- [ ] Multi-tenancy support
-- [ ] Advanced RBAC
-- [ ] Incident playbooks
-- [ ] On-call rotation management
+1. Implement JWT authentication in `backend/middleware/middleware.go`
+2. Use strong passwords and secrets (generate with `openssl rand -hex 32`)
+3. Enable TLS/HTTPS
+4. Restrict CORS origins
+5. Implement rate limiting
+6. Use PostgreSQL with authentication
+7. Run security audit: `go run github.com/securego/gosec/v2/cmd/gosec@latest ./...`
+
+---
+
+## 📊 API Documentation
+
+### Health Check
+```
+GET /health
+Response: {"status": "healthy", "database": "healthy", "prometheus": "healthy"}
+```
+
+### Incidents
+```
+GET    /api/incidents              # List all incidents
+POST   /api/incidents              # Create incident
+GET    /api/incidents/{id}         # Get incident details
+PATCH  /api/incidents/{id}         # Update incident
+GET    /api/incidents/{id}/timeline # Get incident timeline
+```
+
+### SLOs
+```
+GET    /api/slos                   # List all SLOs
+POST   /api/slos                   # Create SLO
+GET    /api/slos/{id}              # Get SLO
+PATCH  /api/slos/{id}              # Update SLO
+DELETE /api/slos/{id}              # Delete SLO
+POST   /api/slos/{id}/calculate    # Recalculate SLO
+```
+
+### Metrics
+```
+GET /api/metrics/availability/{service}
+GET /api/metrics/error-rate/{service}
+GET /api/metrics/latency/{service}
+```
+
+### Kubernetes (if enabled)
+```
+GET /api/kubernetes/pods/{namespace}/{service}
+GET /api/kubernetes/deployments/{namespace}/{service}
+GET /api/kubernetes/events/{namespace}/{service}
+```
+
+---
+
+## 🧪 Testing
+
+### Test Incident Creation
+```bash
+curl -X POST http://localhost:9000/api/incidents \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "High Error Rate Detected",
+    "description": "500 errors spiking on payment-service",
+    "severity": "critical",
+    "service": "payment-service"
+  }'
+```
+
+### Test SLO Calculation
+```bash
+curl -X POST http://localhost:9000/api/slos/{slo-id}/calculate
+```
+
+---
 
 ## 🤝 Contributing
 
-1. Create feature branch: `git checkout -b feature/amazing-feature`
-2. Commit changes: `git commit -m 'Add amazing feature'`
-3. Push to branch: `git push origin feature/amazing-feature`
-4. Open Pull Request
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests
+5. Submit a pull request
+
+### Code Quality Checks
+
+```bash
+# Go formatting
+go fmt ./...
+
+# Go linting
+golangci-lint run
+
+# TypeScript checks
+npm run typecheck
+
+# Build verification
+docker-compose build
+```
+
+---
 
 ## 📝 License
 
-MIT License - see LICENSE file for details
+MIT License (update as needed)
 
-## 🆘 Troubleshooting
+---
 
-### Database connection failed
-```bash
-# Check if PostgreSQL is running
-docker-compose ps postgres
+## 🙏 Acknowledgments
 
-# View logs
-docker-compose logs postgres
+- Grafana OSS community
+- Prometheus, Loki, Tempo teams
+- Kubernetes SIG-Observability
 
-# Restart database
-docker-compose restart postgres
-```
-
-### Backend won't start
-```bash
-# Check environment variables
-printenv | grep DATABASE_URL
-
-# Verify database schema
-docker exec -it reliability-postgres psql -U rcp_user -d reliability_control_plane -c "\dt"
-
-# Run migrations manually
-docker exec -it reliability-backend go run main.go
-```
-
-### API returns 500 errors
-```bash
-# Check backend logs
-docker-compose logs -f backend
-
-# Test database connectivity
-curl http://localhost:9000/health
-```
+---
 
 ## 📞 Support
 
-For issues and questions:
-- GitHub Issues: [Create an issue]
-- Documentation: [Link to docs]
-- Slack: [Your Slack channel]
+- Issues: GitHub Issues
+- Discussions: GitHub Discussions
+- Documentation: `/docs` folder
+
+---
+
+**Built with ❤️ for SRE teams**

@@ -1,14 +1,34 @@
-// Backend API client for Reliability Studio
-// This connects to the Go backend running on port 9000
-
 const API_BASE = "http://localhost:9000/api";
 
-// Generic fetch wrapper with error handling
-async function apiFetch<T>(endpoint: string): Promise<T> {
+// MOCK TOKEN: In a real app, this would come from a login store/localStorage
+const MOCK_TOKEN = "Bearer mock-jwt-token-replace-in-production";
+
+interface FetchOptions extends RequestInit {
+  body?: any;
+}
+
+async function apiFetch<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
+  const { body, ...customConfig } = options;
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${(window as any).AUTH_TOKEN || 'mock-token-123'}`,
+    ...customConfig.headers,
+  };
+
+  const config: RequestInit = {
+    ...customConfig,
+    headers,
+  };
+
+  if (body) {
+    config.body = JSON.stringify(body);
+  }
+
   try {
-    const response = await fetch(`${API_BASE}${endpoint}`);
+    const response = await fetch(`${API_BASE}${endpoint}`, config);
     if (!response.ok) {
-      throw new Error(`API error: ${response.statusText}`);
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `API error: ${response.statusText}`);
     }
     return await response.json();
   } catch (error) {
@@ -17,53 +37,47 @@ async function apiFetch<T>(endpoint: string): Promise<T> {
   }
 }
 
-// Incidents API
-export const getIncidents = () => apiFetch("/incidents");
-export const getIncident = (id: string) => apiFetch(`/incidents/${id}`);
-
-// SLO API
-export const getSLO = () => apiFetch("/slo");
-export const getSLOByService = (service: string) => apiFetch(`/slo/${service}`);
-
-// Kubernetes API
-export const getK8s = () => apiFetch("/k8s");
-export const getK8sPods = () => apiFetch("/k8s/pods");
-export const getK8sEvents = () => apiFetch("/k8s/events");
-
-// Metrics API (Prometheus)
-export const getMetrics = (query: string) => 
-  apiFetch(`/metrics?query=${encodeURIComponent(query)}`);
-
-// Logs API (Loki)
-export const getLogs = (service: string, timeRange: string = "5m") =>
-  apiFetch(`/logs?service=${service}&range=${timeRange}`);
-
-// Traces API (Tempo)
-export const getTraces = (traceId?: string) => 
-  traceId ? apiFetch(`/traces/${traceId}`) : apiFetch("/traces");
-
-// Export all APIs
 export const backendAPI = {
   incidents: {
-    list: getIncidents,
-    get: getIncident,
+    list: () => apiFetch<any[]>("/incidents"),
+    get: (id: string) => apiFetch<any>(`/incidents/${id}`),
+    create: (data: any) => apiFetch<any>("/incidents", { method: 'POST', body: data }),
+    update: (id: string, data: any) => apiFetch<any>(`/incidents/${id}`, { method: 'PATCH', body: data }),
+    getTimeline: (id: string) => apiFetch<any[]>(`/incidents/${id}/timeline`),
+    getCorrelations: (id: string) => apiFetch<any[]>(`/incidents/${id}/correlations`),
   },
-  slo: {
-    get: getSLO,
-    getByService: getSLOByService,
-  },
-  kubernetes: {
-    get: getK8s,
-    pods: getK8sPods,
-    events: getK8sEvents,
+  slos: {
+    list: () => apiFetch<any[]>("/slos"),
+    get: (id: string) => apiFetch<any>(`/slos/${id}`),
+    create: (data: any) => apiFetch<any>("/slos", { method: 'POST', body: data }),
+    update: (id: string, data: any) => apiFetch<any>(`/slos/${id}`, { method: 'PATCH', body: data }),
+    delete: (id: string) => apiFetch<any>(`/slos/${id}`, { method: 'DELETE' }),
+    calculate: (id: string) => apiFetch<any>(`/slos/${id}/calculate`, { method: 'POST' }),
+    getHistory: (id: string) => apiFetch<any[]>(`/slos/${id}/history`),
   },
   metrics: {
-    query: getMetrics,
+    getAvailability: (service: string) => apiFetch<any>(`/metrics/availability/${service}`),
+    getErrorRate: (service: string) => apiFetch<any>(`/metrics/error-rate/${service}`),
+    getLatency: (service: string) => apiFetch<any>(`/metrics/latency/${service}`),
+  },
+  kubernetes: {
+    getPods: (ns: string, svc: string) => apiFetch<any[]>(`/kubernetes/pods/${ns}/${svc}`),
+    getDeployments: (ns: string, svc: string) => apiFetch<any[]>(`/kubernetes/deployments/${ns}/${svc}`),
+    getEvents: (ns: string, svc: string) => apiFetch<any[]>(`/kubernetes/events/${ns}/${svc}`),
   },
   logs: {
-    get: getLogs,
-  },
-  traces: {
-    get: getTraces,
-  },
+    getErrors: (service: string) => apiFetch<any[]>(`/logs/${service}/errors`),
+    search: (service: string, query: string) => apiFetch<any[]>(`/logs/${service}/search?q=${encodeURIComponent(query)}`),
+  }
 };
+
+// Legacy exports for backwards compatibility
+export const getIncidents = () => backendAPI.incidents.list();
+export const getIncident = (id: string) => backendAPI.incidents.get(id);
+export const getSLO = () => backendAPI.slos.list();
+export const getSLOByService = (service: string) => backendAPI.slos.get(service);
+export const getK8s = () => backendAPI.kubernetes.getPods('default', 'all');
+export const getK8sPods = () => backendAPI.kubernetes.getPods('default', 'all');
+export const getK8sEvents = () => backendAPI.kubernetes.getEvents('default', 'all');
+export const getMetrics = (query: string) => apiFetch(`/metrics?query=${encodeURIComponent(query)}`);
+export const getLogs = (service: string) => backendAPI.logs.getErrors(service);

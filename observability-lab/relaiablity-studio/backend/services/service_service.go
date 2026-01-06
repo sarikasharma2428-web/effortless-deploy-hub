@@ -7,7 +7,7 @@ import (
     "github.com/google/uuid"
     "github.com/jmoiron/sqlx"
     "go.uber.org/zap"
-    "reliability-control-plane-backend/models"
+    "github.com/sarikasharma2428-web/reliability-studio/models"
 )
 
 type ServiceService struct {

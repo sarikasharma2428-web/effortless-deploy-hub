@@ -1,8 +1,10 @@
 package clients
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -33,9 +35,10 @@ type K8sEvent struct {
 	Object    string    `json:"object"`
 }
 
-func NewKubernetesClient(kubeconfigPath string) (*KubernetesClient, error) {
+func NewKubernetesClient() (*KubernetesClient, error) {
 	var config *rest.Config
 	var err error
+	kubeconfigPath := "" // Use default logic
 
 	if kubeconfigPath != "" {
 		// Use kubeconfig file
@@ -254,7 +257,32 @@ func formatAge(d time.Duration) string {
 	return fmt.Sprintf("%dd", int(d.Hours()/24))
 }
 
-import (
-	"bytes"
-	"io"
-)
+// Health checks if Kubernetes API is reachable
+func (k *KubernetesClient) Health(ctx context.Context) error {
+	// Try to get server version as a health check
+	_, err := k.clientset.Discovery().ServerVersion()
+	if err != nil {
+		return fmt.Errorf("kubernetes API unhealthy: %w", err)
+	}
+	return nil
+}
+
+// GetPods returns pods for a service (implementation for correlation engine)
+func (k *KubernetesClient) GetPods(ctx context.Context, namespace, service string) ([]PodStatus, error) {
+	// Use label selector to find pods for the service
+	labels := map[string]string{"app": service}
+	return k.GetPodsByLabel(ctx, namespace, labels)
+}
+
+// GetDeployments returns deployments for a service
+func (k *KubernetesClient) GetDeployments(ctx context.Context, namespace, service string) (interface{}, error) {
+	deployments, err := k.clientset.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("app=%s", service),
+	})
+	return deployments, err
+}
+
+// GetEvents returns recent events for a service
+func (k *KubernetesClient) GetEvents(ctx context.Context, namespace, service string, since time.Time) ([]K8sEvent, error) {
+	return k.GetRecentEvents(ctx, namespace, time.Since(since))
+}

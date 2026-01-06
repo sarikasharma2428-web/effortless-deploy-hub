@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"reliability-studio-backend/services"
+	"github.com/sarikasharma2428-web/reliability-studio/services"
 )
 
 func GetSLOStatus(w http.ResponseWriter, r *http.Request) {

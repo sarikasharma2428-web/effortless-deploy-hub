@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -22,7 +22,7 @@ import (
 )
 
 type Server struct {
-	db               *database.DB
+	db               *sql.DB
 	promClient       *clients.PrometheusClient
 	k8sClient        *clients.KubernetesClient
 	lokiClient       *clients.LokiClient
@@ -40,7 +40,7 @@ func main() {
 	lokiURL := getEnv("LOKI_URL", "http://loki:3100")
 
 	// Initialize database
-	log.Println("📊 Connecting to database...")
+	log.Println("Connecting to database...")
 	db, err := database.Connect(dbConfig)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
@@ -91,7 +91,7 @@ func main() {
 	// Setup middleware
 	router.Use(middleware.Recovery)
 	router.Use(middleware.Logging)
-	router.Use(middleware.RateLimit(100)) // 100 requests per minute
+	router.Use(middleware.RateLimit(100))
 
 	// Public routes
 	router.HandleFunc("/health", server.healthHandler).Methods("GET")
@@ -117,6 +117,7 @@ func main() {
 	api.HandleFunc("/slos/{id}", server.updateSLOHandler).Methods("PATCH")
 	api.HandleFunc("/slos/{id}", server.deleteSLOHandler).Methods("DELETE")
 	api.HandleFunc("/slos/{id}/calculate", server.calculateSLOHandler).Methods("POST")
+	api.HandleFunc("/slos/{id}/history", server.getSLOHistoryHandler).Methods("GET")
 
 	// Metrics routes
 	api.HandleFunc("/metrics/availability/{service}", server.getServiceAvailabilityHandler).Methods("GET")
@@ -148,8 +149,9 @@ func main() {
 		AllowCredentials: true,
 	})
 
-	// Start background jobs
-	go server.startBackgroundJobs()
+	// Start background jobs with context
+	ctx, cancelBackgroundJobs := context.WithCancel(context.Background())
+	go server.startBackgroundJobs(ctx)
 
 	// Start server
 	port := getEnv("PORT", "9000")
@@ -168,6 +170,10 @@ func main() {
 		<-sigint
 
 		log.Println("🛑 Shutting down server...")
+		
+		// Cancel background jobs
+		cancelBackgroundJobs()
+		
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
@@ -182,17 +188,23 @@ func main() {
 	}
 }
 
-// Background jobs
-func (s *Server) startBackgroundJobs() {
+// Background jobs - FIXED: Now accepts context for graceful shutdown
+func (s *Server) startBackgroundJobs(ctx context.Context) {
 	// Calculate SLOs every 5 minutes
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		ctx := context.Background()
-		log.Println("⏰ Running SLO calculations...")
-		if err := s.sloService.CalculateAllSLOs(ctx); err != nil {
-			log.Printf("Error calculating SLOs: %v", err)
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("Background jobs shutting down...")
+			return
+		case <-ticker.C:
+			jobCtx := context.Background()
+			log.Println("⏰ Running SLO calculations...")
+			if err := s.sloService.CalculateAllSLOs(jobCtx); err != nil {
+				log.Printf("Error calculating SLOs: %v", err)
+			}
 		}
 	}
 }
@@ -328,15 +340,67 @@ func (s *Server) getIncidentHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	incidentID := vars["id"]
 
-	var incident map[string]interface{}
-	// Query incident details
-	// ... implementation
+	var incident struct {
+		ID          string    `json:"id"`
+		Title       string    `json:"title"`
+		Description string    `json:"description"`
+		Severity    string    `json:"severity"`
+		Status      string    `json:"status"`
+		Service     string    `json:"service"`
+		StartedAt   time.Time `json:"started_at"`
+		ResolvedAt  *time.Time `json:"resolved_at"`
+	}
+
+	err := s.db.QueryRow(`
+		SELECT i.id, i.title, i.description, i.severity, i.status, s.name as service, i.started_at, i.resolved_at
+		FROM incidents i
+		LEFT JOIN services s ON i.service_id = s.id
+		WHERE i.id = $1
+	`, incidentID).Scan(
+		&incident.ID, &incident.Title, &incident.Description, &incident.Severity, 
+		&incident.Status, &incident.Service, &incident.StartedAt, &incident.ResolvedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		respondError(w, http.StatusNotFound, "Incident not found")
+		return
+	} else if err != nil {
+		log.Printf("Error fetching incident: %v", err)
+		respondError(w, http.StatusInternalServerError, "Failed to fetch incident")
+		return
+	}
 
 	respondJSON(w, http.StatusOK, incident)
 }
 
 func (s *Server) updateIncidentHandler(w http.ResponseWriter, r *http.Request) {
-	// Implementation
+	vars := mux.Vars(r)
+	incidentID := vars["id"]
+
+	var req struct {
+		Status   string `json:"status"`
+		Severity string `json:"severity"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request")
+		return
+	}
+
+	_, err := s.db.Exec(`
+		UPDATE incidents 
+		SET status = COALESCE(NULLIF($1, ''), status),
+		    severity = COALESCE(NULLIF($2, ''), severity),
+		    updated_at = NOW(),
+		    resolved_at = CASE WHEN $1 = 'resolved' AND resolved_at IS NULL THEN NOW() ELSE resolved_at END
+		WHERE id = $3
+	`, req.Status, req.Severity, incidentID)
+
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to update incident")
+		return
+	}
+
 	respondJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 }
 
@@ -377,8 +441,18 @@ func (s *Server) getSLOsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createSLOHandler(w http.ResponseWriter, r *http.Request) {
-	// Implementation
-	respondJSON(w, http.StatusCreated, map[string]string{"status": "created"})
+	var slo services.SLO
+	if err := json.NewDecoder(r.Body).Decode(&slo); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request")
+		return
+	}
+
+	if err := s.sloService.CreateSLO(context.Background(), &slo); err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to create SLO")
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, slo)
 }
 
 func (s *Server) getSLOHandler(w http.ResponseWriter, r *http.Request) {
@@ -395,8 +469,22 @@ func (s *Server) getSLOHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) updateSLOHandler(w http.ResponseWriter, r *http.Request) {
-	// Implementation
-	respondJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+	vars := mux.Vars(r)
+	sloID := vars["id"]
+
+	var slo services.SLO
+	if err := json.NewDecoder(r.Body).Decode(&slo); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request")
+		return
+	}
+	slo.ID = sloID
+
+	if err := s.sloService.UpdateSLO(context.Background(), &slo); err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to update SLO")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, slo)
 }
 
 func (s *Server) deleteSLOHandler(w http.ResponseWriter, r *http.Request) {
@@ -423,6 +511,19 @@ func (s *Server) calculateSLOHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, slo)
+}
+
+func (s *Server) getSLOHistoryHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	sloID := vars["id"]
+
+	history, err := s.sloService.GetSLOHistory(context.Background(), sloID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to get SLO history")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, history)
 }
 
 func (s *Server) getServiceAvailabilityHandler(w http.ResponseWriter, r *http.Request) {
