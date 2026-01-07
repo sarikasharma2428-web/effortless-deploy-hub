@@ -94,15 +94,17 @@ func main() {
 	// Setup router
 	router := mux.NewRouter()
 	
-	// Setup middleware
+	// Setup middleware - Security first
 	router.Use(middleware.Recovery)
 	router.Use(middleware.Logging)
-	router.Use(middleware.RateLimit(100))
+	router.Use(middleware.SecurityHeadersMiddleware)
+	router.Use(middleware.RateLimitingMiddleware)
 
 	// Public routes
 	router.HandleFunc("/health", server.healthHandler).Methods("GET")
 	router.HandleFunc("/api/auth/login", middleware.LoginHandler(db)).Methods("POST")
 	router.HandleFunc("/api/auth/register", middleware.RegisterHandler(db)).Methods("POST")
+	router.HandleFunc("/api/auth/refresh", middleware.RefreshTokenHandler()).Methods("POST")
 
 	// Protected routes
 	api := router.PathPrefix("/api").Subrouter()
@@ -147,16 +149,19 @@ func main() {
 	admin.HandleFunc("/users", server.getUsersHandler).Methods("GET")
 	admin.HandleFunc("/services", server.getServicesHandler).Methods("GET")
 
-	// CORS configuration - FIXED: Restricted origins and secure headers
-	allowedOrigins := []string{"http://localhost:3000", "http://localhost:4000"}
-	if prodOrigins := os.Getenv("CORS_ALLOWED_ORIGINS"); prodOrigins != "" {
-		allowedOrigins = strings.Split(prodOrigins, ",")
+	// CORS configuration - HARDENED: Strict origins, no wildcards
+	allowedOrigins := strings.Split(getEnvStrict("CORS_ALLOWED_ORIGINS"), ",")
+	if len(allowedOrigins) == 0 || allowedOrigins[0] == "" {
+		log.Fatal("🔴 CORS_ALLOWED_ORIGINS environment variable not set! Set to comma-separated list of allowed origins, e.g., 'https://example.com,https://app.example.com'")
 	}
+	
+	log.Printf("✅ CORS configured for origins: %v", allowedOrigins)
 
 	corsHandler := cors.New(cors.Options{
 		AllowedOrigins:   allowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Content-Type", "Authorization"},
+		AllowedHeaders:   []string{"Content-Type", "Authorization", "X-CSRF-Token"},
+		ExposedHeaders:   []string{"X-Total-Count"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	})
@@ -668,4 +673,13 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// getEnvStrict - HARDENED: Requires env variable to be set, fails if missing
+func getEnvStrict(key string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	log.Fatalf("🔴 CRITICAL: Environment variable '%s' is required but not set!", key)
+	return "" // unreachable
 }

@@ -8,7 +8,14 @@ export const Panel: React.FC<PanelProps<K8sQuery>> = () => {
 
   useEffect(() => {
     getK8s().then((res) => {
-      setCluster(res.raw);
+      // Handle array response
+      if (Array.isArray(res)) {
+        setCluster(JSON.stringify(res, null, 2));
+      } else if (typeof res === 'string') {
+        setCluster(res);
+      } else {
+        setCluster(JSON.stringify(res, null, 2));
+      }
     });
   }, []);
 

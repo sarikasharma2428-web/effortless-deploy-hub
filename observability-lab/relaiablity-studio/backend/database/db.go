@@ -73,9 +73,10 @@ func InitSchema(db *sql.DB) error {
 	CREATE TABLE IF NOT EXISTS users (
 		id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 		email VARCHAR(255) UNIQUE NOT NULL,
-		username VARCHAR(100) NOT NULL,
+		username VARCHAR(100) NOT NULL UNIQUE,
 		password_hash VARCHAR(255) NOT NULL,
 		roles JSONB DEFAULT '["viewer"]'::jsonb,
+		is_first_login BOOLEAN DEFAULT true,
 		created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 		last_login TIMESTAMP WITH TIME ZONE
@@ -176,6 +177,20 @@ func InitSchema(db *sql.DB) error {
 		created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 	);
 
+	-- Audit logs table - HARDENED: Track all security-relevant events
+	CREATE TABLE IF NOT EXISTS audit_logs (
+		id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+		user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+		username VARCHAR(255),
+		action VARCHAR(100) NOT NULL,
+		event_type VARCHAR(100) NOT NULL,
+		description TEXT,
+		client_ip VARCHAR(50),
+		success BOOLEAN NOT NULL,
+		metadata JSONB DEFAULT '{}'::jsonb,
+		created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+	);
+
 	-- Indexes for performance
 	CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status);
 	CREATE INDEX IF NOT EXISTS idx_incidents_severity ON incidents(severity);
@@ -187,6 +202,10 @@ func InitSchema(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_slos_service_id ON slos(service_id);
 	CREATE INDEX IF NOT EXISTS idx_metrics_incident_id ON metrics_snapshots(incident_id);
 	CREATE INDEX IF NOT EXISTS idx_services_status ON services(status);
+	CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
+	CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
+	CREATE INDEX IF NOT EXISTS idx_audit_logs_username ON audit_logs(username);
+	CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
 
 	-- Full text search indexes
 	CREATE INDEX IF NOT EXISTS idx_incidents_title_search ON incidents USING gin(to_tsvector('english', title));

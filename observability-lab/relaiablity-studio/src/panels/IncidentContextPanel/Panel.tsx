@@ -8,7 +8,14 @@ export const Panel: React.FC<PanelProps<IncidentQuery>> = () => {
 
   useEffect(() => {
     getIncidents().then((res) => {
-      setLogs(res.raw);
+      // Handle array response
+      if (Array.isArray(res)) {
+        setLogs(JSON.stringify(res, null, 2));
+      } else if (typeof res === 'string') {
+        setLogs(res);
+      } else {
+        setLogs(JSON.stringify(res, null, 2));
+      }
     });
   }, []);
 

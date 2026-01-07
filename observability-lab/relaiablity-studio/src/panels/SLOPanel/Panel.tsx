@@ -8,7 +8,14 @@ export const Panel: React.FC<PanelProps<SLOQuery>> = () => {
 
   useEffect(() => {
     getSLO().then((res) => {
-      setMetrics(res.raw);
+      // Handle array response
+      if (Array.isArray(res)) {
+        setMetrics(JSON.stringify(res, null, 2));
+      } else if (typeof res === 'string') {
+        setMetrics(res);
+      } else {
+        setMetrics(JSON.stringify(res, null, 2));
+      }
     });
   }, []);
 

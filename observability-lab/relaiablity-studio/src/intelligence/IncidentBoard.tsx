@@ -11,7 +11,8 @@ export const IncidentBoard = () => {
   useEffect(() => {
     const load = async () => {
       const data = await getIncidents();
-      setIncident(data);
+      // Handle array or single incident
+      setIncident(Array.isArray(data) && data.length > 0 ? data[0] : null);
     };
     load();
   }, []);
@@ -20,8 +21,8 @@ export const IncidentBoard = () => {
 
   return (
     <div>
-      <h3>{incident.service} Incident</h3>
-      <RootCausePanel cause={incident.rootCause} />
+      <h3>{incident.service || 'Unknown'} Incident</h3>
+      <RootCausePanel cause={incident.root_cause || ''} />
       <ImpactSummary impact={incident.impact} />
       <IncidentTimeline events={incident.timeline} />
     </div>

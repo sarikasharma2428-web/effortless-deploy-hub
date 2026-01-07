@@ -46,6 +46,12 @@ export const backendAPI = {
     getTimeline: (id: string) => apiFetch<any[]>(`/incidents/${id}/timeline`),
     getCorrelations: (id: string) => apiFetch<any[]>(`/incidents/${id}/correlations`),
   },
+  services: {
+    list: () => apiFetch<any[]>("/services"),
+    get: (id: string) => apiFetch<any>(`/services/${id}`),
+    create: (data: any) => apiFetch<any>("/services", { method: 'POST', body: data }),
+    update: (id: string, data: any) => apiFetch<any>(`/services/${id}`, { method: 'PATCH', body: data }),
+  },
   slos: {
     list: () => apiFetch<any[]>("/slos"),
     get: (id: string) => apiFetch<any>(`/slos/${id}`),

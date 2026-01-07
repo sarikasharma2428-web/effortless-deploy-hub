@@ -9,11 +9,13 @@ import { LogsTab } from '../components/tabs/LogsTab';
 import { TracesTab } from '../components/tabs/TracesTab';
 import { KubernetesTab } from '../components/tabs/KubernetesTab';
 import { TaskList } from '../components/TaskList';
+import { SLOStatus } from '../components/SLOStatus';
 import { incidentsApi } from '../api/incidents';
+import { Incident } from '../../models/Incident';
 
 export const IncidentWorkspacePage = () => {
     const { id } = useParams<{ id: string }>();
-    const [incident, setIncident] = useState(null);
+    const [incident, setIncident] = useState<Incident | null>(null);
     const [activeTab, setActiveTab] = useState('timeline');
 
     useEffect(() => {
@@ -21,6 +23,7 @@ export const IncidentWorkspacePage = () => {
     }, [id]);
 
     const loadIncident = async () => {
+        if (!id) return;
         const data = await incidentsApi.get(id);
         setIncident(data);
     };
@@ -33,7 +36,7 @@ export const IncidentWorkspacePage = () => {
 
             <div className="workspace-grid">
                 <div className="main-content">
-                    <BlastRadiusView services={incident.services} />
+                    <BlastRadiusView services={incident.services ?? []} />
 
                     <TabsBar>
                         <Tab label="Timeline" active={activeTab === 'timeline'} onChangeTab={() => setActiveTab('timeline')} />
@@ -53,7 +56,7 @@ export const IncidentWorkspacePage = () => {
                 </div>
 
                 <div className="sidebar">
-                    <SLOStatus services={incident.services} />
+                    <SLOStatus services={incident.services ?? []} />
                     <TaskList incidentId={id} />
                 </div>
             </div>
