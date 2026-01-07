@@ -20,17 +20,17 @@ var JWT_SECRET = []byte(getEnvStrict("JWT_SECRET"))
 
 // Token expiration times
 const (
-	AccessTokenExpiration  = 15 * time.Minute  // Short-lived access token
+	AccessTokenExpiration  = 15 * time.Minute   // Short-lived access token
 	RefreshTokenExpiration = 7 * 24 * time.Hour // 7 days refresh token
 )
 
 type Claims struct {
-	UserID      string   `json:"user_id"`
-	Username    string   `json:"username"`
-	Email       string   `json:"email"`
-	Roles       []string `json:"roles"`
-	TokenType   string   `json:"token_type"` // "access" or "refresh"
-	IsFirstLogin bool    `json:"is_first_login"`
+	UserID       string   `json:"user_id"`
+	Username     string   `json:"username"`
+	Email        string   `json:"email"`
+	Roles        []string `json:"roles"`
+	TokenType    string   `json:"token_type"` // "access" or "refresh"
+	IsFirstLogin bool     `json:"is_first_login"`
 	jwt.RegisteredClaims
 }
 
@@ -109,59 +109,59 @@ func Auth(next http.Handler) http.Handler {
 
 // Logging middleware
 func Logging(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        start := time.Now()
-        wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
-        next.ServeHTTP(wrapped, r)
-        
-        duration := time.Since(start)
-        log.Printf("📊 %s %s %d %v", r.Method, r.URL.Path, wrapped.statusCode, duration)
-    })
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+		next.ServeHTTP(wrapped, r)
+
+		duration := time.Since(start)
+		log.Printf("📊 %s %s %d %v", r.Method, r.URL.Path, wrapped.statusCode, duration)
+	})
 }
 
 // Recovery middleware - IMPROVED: Better panic handling
 func Recovery(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        defer func() {
-            if err := recover(); err != nil {
-                log.Printf("🚨 PANIC RECOVERED: %v\nPath: %s %s", err, r.Method, r.URL.Path)
-                
-                w.Header().Set("Content-Type", "application/json")
-                w.WriteHeader(http.StatusInternalServerError)
-                json.NewEncoder(w).Encode(map[string]string{
-                    "error": "Internal server error",
-                    "message": "An unexpected error occurred",
-                })
-            }
-        }()
-        next.ServeHTTP(w, r)
-    })
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if err := recover(); err != nil {
+				log.Printf("🚨 PANIC RECOVERED: %v\nPath: %s %s", err, r.Method, r.URL.Path)
+
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]string{
+					"error":   "Internal server error",
+					"message": "An unexpected error occurred",
+				})
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
 }
 
 // RateLimit middleware - IMPROVED: Added basic rate limiting structure
 func RateLimit(requestsPerMinute int) func(http.Handler) http.Handler {
-    // TODO: Implement proper rate limiting with token bucket or sliding window
-    // For now, this is a placeholder
-    return func(next http.Handler) http.Handler {
-        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-            // Rate limiting logic would go here
-            // Example: Check client IP against rate limit store
-            // if exceeded, return 429 Too Many Requests
-            next.ServeHTTP(w, r)
-        })
-    }
+	// TODO: Implement proper rate limiting with token bucket or sliding window
+	// For now, this is a placeholder
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Rate limiting logic would go here
+			// Example: Check client IP against rate limit store
+			// if exceeded, return 429 Too Many Requests
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // LoginHandler - HARDENED with account lockout and audit logging
 func LoginHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		clientIP := GetClientIP(r)
-		
+
 		var req struct {
 			Username string `json:"username"`
 			Password string `json:"password"`
 		}
-		
+
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			respondError(w, http.StatusBadRequest, "Invalid request format")
 			return
@@ -179,15 +179,15 @@ func LoginHandler(db *sql.DB) http.HandlerFunc {
 			respondError(w, http.StatusForbidden, "Account is temporarily locked. Try again in 15 minutes.")
 			return
 		}
-		
+
 		var user struct {
-			ID              string
-			Email           string
-			Username        string
-			PasswordHash    string
-			RolesJSON       string
-			IsFirstLogin    bool
-			LastLogin       *time.Time
+			ID           string
+			Email        string
+			Username     string
+			PasswordHash string
+			RolesJSON    string
+			IsFirstLogin bool
+			LastLogin    *time.Time
 		}
 
 		err := db.QueryRow(`
@@ -195,8 +195,8 @@ func LoginHandler(db *sql.DB) http.HandlerFunc {
 			       (last_login IS NULL) as is_first_login, last_login
 			FROM users 
 			WHERE username = $1 OR email = $1
-		`, req.Username).Scan(&user.ID, &user.Email, &user.Username, &user.PasswordHash, 
-		                       &user.RolesJSON, &user.IsFirstLogin, &user.LastLogin)
+		`, req.Username).Scan(&user.ID, &user.Email, &user.Username, &user.PasswordHash,
+			&user.RolesJSON, &user.IsFirstLogin, &user.LastLogin)
 
 		if err == sql.ErrNoRows {
 			accountLockout.RecordFailedAttempt(req.Username)
@@ -308,7 +308,7 @@ func LoginHandler(db *sql.DB) http.HandlerFunc {
 func RefreshTokenHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		clientIP := GetClientIP(r)
-		
+
 		// Get refresh token from cookie
 		refreshCookie, err := r.Cookie("refresh_token")
 		if err != nil {
@@ -384,7 +384,7 @@ func RefreshTokenHandler() http.HandlerFunc {
 func RefreshTokenMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		clientIP := GetClientIP(r)
-		
+
 		// Get refresh token from cookie
 		refreshCookie, err := r.Cookie("refresh_token")
 		if err != nil {
@@ -452,7 +452,7 @@ func RefreshTokenMiddleware(next http.Handler) http.Handler {
 			"token_type":   "Bearer",
 			"expires_in":   int(AccessTokenExpiration.Seconds()),
 		})
-		
+
 		next.ServeHTTP(w, r)
 	})
 }
@@ -475,13 +475,13 @@ func GetClientIP(r *http.Request) string {
 func RegisterHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		clientIP := GetClientIP(r)
-		
+
 		var req struct {
 			Username string `json:"username"`
 			Email    string `json:"email"`
 			Password string `json:"password"`
 		}
-		
+
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			respondError(w, http.StatusBadRequest, "Invalid request format")
 			return
@@ -531,7 +531,7 @@ func RegisterHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		LogAuditEvent("register", userID, req.Username, "REGISTER", "User registered successfully", clientIP, true)
-		
+
 		respondJSON(w, http.StatusCreated, map[string]interface{}{
 			"status":   "user created",
 			"user_id":  userID,
@@ -594,7 +594,7 @@ func RequireRole(requiredRole string) func(http.Handler) http.Handler {
 				respondError(w, http.StatusForbidden, fmt.Sprintf("Missing required role: %s", requiredRole))
 				return
 			}
-			
+
 			next.ServeHTTP(w, r)
 		})
 	}
@@ -632,11 +632,11 @@ func getEnvStrict(key string) string {
 
 // Response writer wrapper for status code tracking
 type responseWriter struct {
-    http.ResponseWriter
-    statusCode int
+	http.ResponseWriter
+	statusCode int
 }
 
 func (rw *responseWriter) WriteHeader(code int) {
-    rw.statusCode = code
-    rw.ResponseWriter.WriteHeader(code)
+	rw.statusCode = code
+	rw.ResponseWriter.WriteHeader(code)
 }

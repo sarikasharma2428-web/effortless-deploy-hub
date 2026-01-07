@@ -34,7 +34,7 @@ func TestSLOInterfaceImplementation(t *testing.T) {
 
 func TestCalculateSLOLogic(t *testing.T) {
 	t.Log("Verifying SLO calculation logic...")
-	
+
 	testCases := []struct {
 		name     string
 		target   float64
@@ -53,18 +53,18 @@ func TestCalculateSLOLogic(t *testing.T) {
 			allowed := 100.0 - tc.target
 			observed := 100.0 - tc.current
 			remaining := ((allowed - observed) / allowed) * 100
-			
-			if math.Abs(remaining - tc.expected) > 0.0001 {
+
+			if math.Abs(remaining-tc.expected) > 0.0001 {
 				t.Errorf("%s: Expected %f%% remaining, got %f", tc.name, tc.expected, remaining)
 			}
-			
+
 			status := "healthy"
 			if remaining < 25 {
 				status = "critical"
 			} else if remaining < 50 {
 				status = "warning"
 			}
-			
+
 			if status != tc.status {
 				t.Errorf("%s: Expected status %s, got %s", tc.name, tc.status, status)
 			}

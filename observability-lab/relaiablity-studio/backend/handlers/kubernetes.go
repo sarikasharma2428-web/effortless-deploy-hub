@@ -15,4 +15,3 @@ func GetK8sStatus(w http.ResponseWriter, r *http.Request) {
 		"raw": data,
 	})
 }
-

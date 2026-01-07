@@ -75,7 +75,7 @@ func (k *KubernetesClient) GetFailedPods(ctx context.Context, namespace string) 
 
 	for _, pod := range pods.Items {
 		status := string(pod.Status.Phase)
-		
+
 		// Count restarts
 		var totalRestarts int32
 		for _, containerStatus := range pod.Status.ContainerStatuses {
@@ -85,7 +85,7 @@ func (k *KubernetesClient) GetFailedPods(ctx context.Context, namespace string) 
 		// Check if pod is not healthy
 		if status != "Running" || totalRestarts > 3 {
 			age := time.Since(pod.CreationTimestamp.Time)
-			
+
 			failedPods = append(failedPods, PodStatus{
 				Name:      pod.Name,
 				Namespace: pod.Namespace,
@@ -155,7 +155,7 @@ func (k *KubernetesClient) GetPodsByLabel(ctx context.Context, namespace string,
 		}
 
 		age := time.Since(pod.CreationTimestamp.Time)
-		
+
 		podStatuses = append(podStatuses, PodStatus{
 			Name:      pod.Name,
 			Namespace: pod.Namespace,

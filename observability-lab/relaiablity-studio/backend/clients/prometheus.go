@@ -18,7 +18,7 @@ type PrometheusClient struct {
 type PrometheusResponse struct {
 	Status string `json:"status"`
 	Data   struct {
-		ResultType string           `json:"resultType"`
+		ResultType string             `json:"resultType"`
 		Result     []PrometheusResult `json:"result"`
 	} `json:"data"`
 }
@@ -42,7 +42,7 @@ func NewPrometheusClient(baseURL string) *PrometheusClient {
 func (c *PrometheusClient) Query(ctx context.Context, query string, timestamp time.Time) (*PrometheusResponse, error) {
 	params := url.Values{}
 	params.Add("query", query)
-	
+
 	if !timestamp.IsZero() {
 		params.Add("time", fmt.Sprintf("%d", timestamp.Unix()))
 	} else {
@@ -236,21 +236,21 @@ func (c *PrometheusClient) CalculateSLO(ctx context.Context, service string, win
 // Health checks if Prometheus is reachable and healthy
 func (c *PrometheusClient) Health(ctx context.Context) error {
 	reqURL := fmt.Sprintf("%s/-/healthy", c.BaseURL)
-	
+
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create health check request: %w", err)
 	}
-	
+
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("prometheus unreachable: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("prometheus unhealthy: status %d", resp.StatusCode)
 	}
-	
+
 	return nil
 }

@@ -1,17 +1,70 @@
 const API_BASE = "http://localhost:9000/api";
 
-// MOCK TOKEN: In a real app, this would come from a login store/localStorage
-const MOCK_TOKEN = "Bearer mock-jwt-token-replace-in-production";
-
 interface FetchOptions extends RequestInit {
   body?: any;
 }
 
+interface ApiError {
+  status: number;
+  message: string;
+  isTokenExpired: boolean;
+}
+
+class ApiErrorHandler {
+  static async handle(response: Response): Promise<ApiError> {
+    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+    
+    // Check for 401 Unauthorized (token expired or invalid)
+    if (response.status === 401) {
+      return {
+        status: response.status,
+        message: 'Your session has expired. Please login again.',
+        isTokenExpired: true,
+      };
+    }
+
+    // Check for 429 Too Many Requests (rate limited)
+    if (response.status === 429) {
+      return {
+        status: response.status,
+        message: 'Too many requests. Please wait a moment and try again.',
+        isTokenExpired: false,
+      };
+    }
+
+    // Check for 403 Forbidden (account locked or insufficient permissions)
+    if (response.status === 403) {
+      return {
+        status: response.status,
+        message: 'Access forbidden. Your account may be locked due to failed login attempts.',
+        isTokenExpired: false,
+      };
+    }
+
+    return {
+      status: response.status,
+      message: errorData.error || `API error: ${response.statusText}`,
+      isTokenExpired: false,
+    };
+  }
+}
+
+// Global error callback for token expiration
+let onTokenExpired: (() => void) | null = null;
+
+export function setTokenExpiredCallback(callback: () => void) {
+  onTokenExpired = callback;
+}
+
 async function apiFetch<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
   const { body, ...customConfig } = options;
+  
+  // Get token from localStorage
+  const token = localStorage.getItem('access_token');
+  
   const headers = {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
     ...customConfig.headers,
   };
 
@@ -26,18 +79,56 @@ async function apiFetch<T>(endpoint: string, options: FetchOptions = {}): Promis
 
   try {
     const response = await fetch(`${API_BASE}${endpoint}`, config);
+    
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `API error: ${response.statusText}`);
+      const apiError = await ApiErrorHandler.handle(response);
+      
+      // Handle token expiration globally
+      if (apiError.isTokenExpired) {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('user');
+        if (onTokenExpired) {
+          onTokenExpired();
+        }
+      }
+      
+      const error = new Error(apiError.message) as Error & { status?: number; isTokenExpired?: boolean };
+      error.status = apiError.status;
+      error.isTokenExpired = apiError.isTokenExpired;
+      throw error;
     }
+    
     return await response.json();
   } catch (error) {
-    console.error(`Failed to fetch ${endpoint}:`, error);
-    throw error;
+    // Re-throw with context
+    if (error instanceof Error) {
+      console.error(`Failed to fetch ${endpoint}: ${error.message}`, error);
+      throw error;
+    }
+    
+    // Wrap unexpected errors
+    const wrappedError = new Error(`Failed to fetch ${endpoint}`) as Error & { originalError?: unknown };
+    wrappedError.originalError = error;
+    console.error('Unexpected error in apiFetch:', error);
+    throw wrappedError;
   }
 }
 
 export const backendAPI = {
+  auth: {
+    login: (username: string, password: string) => 
+      apiFetch<{ access_token: string; user: any }>("/auth/login", { 
+        method: 'POST', 
+        body: { username, password } 
+      }),
+    register: (username: string, email: string, password: string) =>
+      apiFetch<{ user_id: string; username: string }>("/auth/register", {
+        method: 'POST',
+        body: { username, email, password }
+      }),
+    refresh: () =>
+      apiFetch<{ access_token: string }>("/auth/refresh", { method: 'POST' }),
+  },
   incidents: {
     list: () => apiFetch<any[]>("/incidents"),
     get: (id: string) => apiFetch<any>(`/incidents/${id}`),

@@ -8,9 +8,12 @@ import (
 	"os"
 	"time"
 
-	"golang.org/x/crypto/bcrypt"
 	_ "github.com/lib/pq"
+	"golang.org/x/crypto/bcrypt"
 )
+
+// DefaultQueryTimeout is the default timeout for database queries
+const DefaultQueryTimeout = 30 * time.Second
 
 type Config struct {
 	Host     string
@@ -56,10 +59,15 @@ func Connect(config *Config) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	log.Printf("✅ Connected to PostgreSQL database: %s@%s:%s/%s", 
+	log.Printf("✅ Connected to PostgreSQL database: %s@%s:%s/%s",
 		config.User, config.Host, config.Port, config.DBName)
 
 	return db, nil
+}
+
+// ContextWithTimeout returns a context with database query timeout
+func ContextWithTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, DefaultQueryTimeout)
 }
 
 // InitSchema initializes the database schema
@@ -243,7 +251,7 @@ func SeedDefaultData(db *sql.DB) error {
 			VALUES ($1, $2, $3, 'healthy')
 			ON CONFLICT (name) DO NOTHING
 		`, svc.name, svc.description, svc.team)
-		
+
 		if err != nil {
 			return fmt.Errorf("failed to seed service %s: %w", svc.name, err)
 		}
@@ -260,7 +268,7 @@ func SeedDefaultData(db *sql.DB) error {
 		VALUES ($1, $2, $3, $4::jsonb)
 		ON CONFLICT (email) DO NOTHING
 	`, "admin@reliability.io", "admin", string(hashedPassword), `["admin", "editor", "viewer"]`)
-	
+
 	if err != nil {
 		return fmt.Errorf("failed to seed admin user: %w", err)
 	}
@@ -274,8 +282,8 @@ func SeedDefaultData(db *sql.DB) error {
 				INSERT INTO slos (service_id, name, description, target_percentage, window_days, sli_type, query)
 				VALUES ($1, $2, $3, $4, $5, $6, $7)
 				ON CONFLICT (service_id, name) DO NOTHING
-			`, serviceID, "Availability", "Percentage of successful requests", 99.9, 30, "availability", 
-			   fmt.Sprintf(`sum(rate(http_requests_total{service="%s",status!~"5.."}[${WINDOW}])) / sum(rate(http_requests_total{service="%s"}[${WINDOW}])) * 100`, svcName, svcName))
+			`, serviceID, "Availability", "Percentage of successful requests", 99.9, 30, "availability",
+				fmt.Sprintf(`sum(rate(http_requests_total{service="%s",status!~"5.."}[${WINDOW}])) / sum(rate(http_requests_total{service="%s"}[${WINDOW}])) * 100`, svcName, svcName))
 		}
 	}
 

@@ -4,18 +4,20 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
-	"syscall"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
-	
+
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
 	_ "net/http/pprof"
-	
+
 	"github.com/sarikasharma2428-web/reliability-studio/clients"
 	"github.com/sarikasharma2428-web/reliability-studio/correlation"
 	"github.com/sarikasharma2428-web/reliability-studio/database"
@@ -24,12 +26,12 @@ import (
 )
 
 type Server struct {
-	db               *sql.DB
-	promClient       *clients.PrometheusClient
-	k8sClient        *clients.KubernetesClient
-	lokiClient       *clients.LokiClient
-	sloService       *services.SLOService
-	timelineService  *services.TimelineService
+	db                *sql.DB
+	promClient        *clients.PrometheusClient
+	k8sClient         *clients.KubernetesClient
+	lokiClient        *clients.LokiClient
+	sloService        *services.SLOService
+	timelineService   *services.TimelineService
 	correlationEngine *correlation.CorrelationEngine
 }
 
@@ -63,7 +65,7 @@ func main() {
 	log.Println("🔌 Initializing clients...")
 	promClient := clients.NewPrometheusClient(promURL)
 	lokiClient := clients.NewLokiClient(lokiURL)
-	
+
 	// Initialize K8s client - FIXED: Handle typed-nil issue for interfaces
 	var k8sInterface correlation.KubernetesClient
 	k8sClient, err := clients.NewKubernetesClient()
@@ -93,7 +95,7 @@ func main() {
 
 	// Setup router
 	router := mux.NewRouter()
-	
+
 	// Setup middleware - Security first
 	router.Use(middleware.Recovery)
 	router.Use(middleware.Logging)
@@ -154,7 +156,7 @@ func main() {
 	if len(allowedOrigins) == 0 || allowedOrigins[0] == "" {
 		log.Fatal("🔴 CORS_ALLOWED_ORIGINS environment variable not set! Set to comma-separated list of allowed origins, e.g., 'https://example.com,https://app.example.com'")
 	}
-	
+
 	log.Printf("✅ CORS configured for origins: %v", allowedOrigins)
 
 	corsHandler := cors.New(cors.Options{
@@ -197,10 +199,10 @@ func main() {
 		<-sigint
 
 		log.Println("🛑 Shutting down server...")
-		
+
 		// Cancel background jobs
 		cancelBackgroundJobs()
-		
+
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
@@ -239,7 +241,7 @@ func (s *Server) startBackgroundJobs(ctx context.Context) {
 // Handlers
 func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 	health := map[string]interface{}{
-		"status": "healthy",
+		"status":    "healthy",
 		"timestamp": time.Now(),
 	}
 
@@ -279,14 +281,31 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getIncidentsHandler(w http.ResponseWriter, r *http.Request) {
-	// Query incidents from database
-	rows, err := s.db.Query(`
+	// Parse pagination parameters
+	limit := 50
+	offset := 0
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 200 {
+			limit = parsed
+		}
+	}
+	if o := r.URL.Query().Get("offset"); o != "" {
+		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
+			offset = parsed
+		}
+	}
+
+	// Query incidents from database with pagination and timeout
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	rows, err := s.db.QueryContext(ctx, `
 		SELECT i.id, i.title, i.severity, i.status, s.name as service, i.started_at
 		FROM incidents i
 		LEFT JOIN services s ON i.service_id = s.id
 		ORDER BY i.started_at DESC
-		LIMIT 100
-	`)
+		LIMIT $1 OFFSET $2
+	`, limit, offset)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to query incidents")
 		return
@@ -297,7 +316,7 @@ func (s *Server) getIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var id, title, severity, status, service string
 		var startedAt time.Time
-		
+
 		if err := rows.Scan(&id, &title, &severity, &status, &service, &startedAt); err != nil {
 			continue
 		}
@@ -312,7 +331,14 @@ func (s *Server) getIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	respondJSON(w, http.StatusOK, incidents)
+	if incidents == nil {
+		incidents = make([]map[string]interface{}, 0)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Pagination-Limit", fmt.Sprintf("%d", limit))
+	w.Header().Set("X-Pagination-Offset", fmt.Sprintf("%d", offset))
+	json.NewEncoder(w).Encode(incidents)
 }
 
 func (s *Server) createIncidentHandler(w http.ResponseWriter, r *http.Request) {
@@ -368,13 +394,13 @@ func (s *Server) getIncidentHandler(w http.ResponseWriter, r *http.Request) {
 	incidentID := vars["id"]
 
 	var incident struct {
-		ID          string    `json:"id"`
-		Title       string    `json:"title"`
-		Description string    `json:"description"`
-		Severity    string    `json:"severity"`
-		Status      string    `json:"status"`
-		Service     string    `json:"service"`
-		StartedAt   time.Time `json:"started_at"`
+		ID          string     `json:"id"`
+		Title       string     `json:"title"`
+		Description string     `json:"description"`
+		Severity    string     `json:"severity"`
+		Status      string     `json:"status"`
+		Service     string     `json:"service"`
+		StartedAt   time.Time  `json:"started_at"`
 		ResolvedAt  *time.Time `json:"resolved_at"`
 	}
 
@@ -384,7 +410,7 @@ func (s *Server) getIncidentHandler(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN services s ON i.service_id = s.id
 		WHERE i.id = $1
 	`, incidentID).Scan(
-		&incident.ID, &incident.Title, &incident.Description, &incident.Severity, 
+		&incident.ID, &incident.Title, &incident.Description, &incident.Severity,
 		&incident.Status, &incident.Service, &incident.StartedAt, &incident.ResolvedAt,
 	)
 
@@ -664,8 +690,14 @@ func respondJSON(w http.ResponseWriter, code int, data interface{}) {
 	json.NewEncoder(w).Encode(data)
 }
 
+// respondError writes a standardized error response with timestamp and status code
 func respondError(w http.ResponseWriter, code int, message string) {
-	respondJSON(w, code, map[string]string{"error": message})
+	respondJSON(w, code, map[string]interface{}{
+		"status":    "error",
+		"code":      code,
+		"error":     message,
+		"timestamp": time.Now().UTC(),
+	})
 }
 
 func getEnv(key, defaultValue string) string {

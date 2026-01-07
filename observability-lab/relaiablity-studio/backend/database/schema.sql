@@ -160,6 +160,8 @@ CREATE INDEX idx_alerts_fingerprint ON alerts(fingerprint);
 CREATE INDEX idx_alerts_status ON alerts(status);
 CREATE INDEX idx_incident_services_service ON incident_services(service_id);
 CREATE INDEX idx_metrics_cache_key_time ON metrics_cache(metric_key, timestamp DESC);
+CREATE INDEX idx_correlations_created_at ON correlations(created_at DESC);
+CREATE INDEX idx_correlations_incident_id ON correlations(incident_id);
 
 -- Trigger to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()

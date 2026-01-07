@@ -1,3 +1,4 @@
+// Package correlation provides root cause analysis and incident correlation logic
 package correlation
 
 import (
@@ -5,15 +6,22 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"time"
 	"github.com/sarikasharma2428-web/reliability-studio/clients"
+	"sync"
+	"time"
 )
 
+// WorkerPoolSize defines the maximum number of concurrent correlation tasks
+const WorkerPoolSize = 10
+
+// CorrelationEngine provides root cause analysis with bounded concurrency
 type CorrelationEngine struct {
-	db            *sql.DB
-	promClient    PrometheusClient
-	k8sClient     KubernetesClient
-	lokiClient    LokiClient
+	db              *sql.DB
+	promClient      PrometheusClient
+	k8sClient       KubernetesClient
+	lokiClient      LokiClient
+	workerSemaphore chan struct{} // Bounded worker pool
+	mu              sync.RWMutex  // Protects correlations slice
 }
 
 type PrometheusClient interface {
@@ -43,30 +51,34 @@ type Correlation struct {
 }
 
 type IncidentContext struct {
-	Service        string
-	Namespace      string
-	StartTime      time.Time
-	Severity       string
-	AffectedPods   []clients.PodStatus
-	LogErrors      []clients.LogEntry
-	LogPatterns    map[string]int
-	Metrics        map[string]float64
-	RootCauses     []string
-	Correlations   []Correlation
+	Service      string
+	Namespace    string
+	StartTime    time.Time
+	Severity     string
+	AffectedPods []clients.PodStatus
+	LogErrors    []clients.LogEntry
+	LogPatterns  map[string]int
+	Metrics      map[string]float64
+	RootCauses   []string
+	Correlations []Correlation
 }
 
-// NewCorrelationEngine creates a new correlation engine
+// NewCorrelationEngine creates a new correlation engine with bounded worker pool
 func NewCorrelationEngine(db *sql.DB, promClient PrometheusClient, k8sClient KubernetesClient, lokiClient LokiClient) *CorrelationEngine {
 	return &CorrelationEngine{
-		db:         db,
-		promClient: promClient,
-		k8sClient:  k8sClient,
-		lokiClient: lokiClient,
+		db:              db,
+		promClient:      promClient,
+		k8sClient:       k8sClient,
+		lokiClient:      lokiClient,
+		workerSemaphore: make(chan struct{}, WorkerPoolSize), // Bounded to WorkerPoolSize
 	}
 }
 
-// CorrelateIncident performs comprehensive correlation for an incident
+// CorrelateIncident performs comprehensive correlation for an incident with bounded concurrency
 func (e *CorrelationEngine) CorrelateIncident(ctx context.Context, incidentID, service, namespace string, startTime time.Time) (*IncidentContext, error) {
+	// Acquire worker slot (blocks if pool is full, enforcing max 10 concurrent correlations)
+	e.workerSemaphore <- struct{}{}
+	defer func() { <-e.workerSemaphore }()
 	ic := &IncidentContext{
 		Service:   service,
 		Namespace: namespace,
@@ -106,17 +118,17 @@ func (e *CorrelationEngine) correlateK8sState(ctx context.Context, ic *IncidentC
 			SourceID:        "client",
 			ConfidenceScore: 1.0,
 			Details: map[string]interface{}{
-				"status": "not available",
+				"status":  "not available",
 				"message": "Kubernetes integration not configured",
 			},
 		})
 		return nil
 	}
-	
+
 	pods, err := e.k8sClient.GetPods(ctx, ic.Namespace, ic.Service)
 	if err == nil {
 		ic.AffectedPods = pods
-		
+
 		// Add K8s correlations if pods are unhealthy
 		for _, pod := range pods {
 			if pod.Status != "Running" {
@@ -141,7 +153,7 @@ func (e *CorrelationEngine) correlateMetrics(ctx context.Context, ic *IncidentCo
 		return nil
 	}
 	ic.Metrics = make(map[string]float64)
-	
+
 	errorRate, err := e.promClient.GetErrorRate(ctx, ic.Service)
 	if err == nil {
 		ic.Metrics["error_rate"] = errorRate
@@ -217,7 +229,7 @@ func (e *CorrelationEngine) analyzeRootCause(ctx context.Context, ic *IncidentCo
 		if pod.Status != "Running" {
 			ic.RootCauses = append([]string{fmt.Sprintf("PRIMARY: Pod %s is %s", pod.Name, pod.Status)}, ic.RootCauses...)
 			ic.Severity = "critical"
-			
+
 			ic.Correlations = append(ic.Correlations, Correlation{
 				Type:            "infrastructure",
 				SourceType:      "kubernetes",
@@ -235,7 +247,7 @@ func (e *CorrelationEngine) analyzeRootCause(ctx context.Context, ic *IncidentCo
 			if count > 10 {
 				ic.RootCauses = append([]string{fmt.Sprintf("PRIMARY: Log pattern correlated with error spike: %s", pattern)}, ic.RootCauses...)
 				ic.Severity = "high"
-				
+
 				// Increase confidence for these correlations
 				for i := range ic.Correlations {
 					if ic.Correlations[i].Type == "log_pattern" && ic.Correlations[i].Details["pattern"] == pattern {
@@ -261,7 +273,7 @@ func (e *CorrelationEngine) saveCorrelations(ctx context.Context, incidentID str
 			INSERT INTO correlations (incident_id, correlation_type, source_type, source_id, confidence_score, details)
 			VALUES ($1, $2, $3, $4, $5, $6)
 		`, incidentID, c.Type, c.SourceType, c.SourceID, c.ConfidenceScore, details)
-		
+
 		if err != nil {
 			fmt.Printf("Error saving correlation: %v\n", err)
 		}

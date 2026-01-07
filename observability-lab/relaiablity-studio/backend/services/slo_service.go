@@ -1,12 +1,13 @@
+// Package services provides business logic for SLO, incidents, and other reliability features
 package services
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/sarikasharma2428-web/reliability-studio/clients"
 	"strings"
 	"time"
-	"github.com/sarikasharma2428-web/reliability-studio/clients"
 )
 
 type SLOService struct {
@@ -20,20 +21,20 @@ type PrometheusQueryClient interface {
 }
 
 type SLO struct {
-	ID                  string    `json:"id"`
-	ServiceID           string    `json:"service_id"`
-	ServiceName         string    `json:"service_name"`
-	Name                string    `json:"name"`
-	Description         string    `json:"description"`
-	TargetPercentage    float64   `json:"target_percentage"`
-	WindowDays          int       `json:"window_days"`
-	SLIType             string    `json:"sli_type"`
-	Query               string    `json:"query"`
-	CurrentPercentage   float64   `json:"current_percentage"`
-	ErrorBudgetRemaining float64  `json:"error_budget_remaining"`
-	Status              string    `json:"status"`
-	LastCalculatedAt    time.Time `json:"last_calculated_at"`
-	CreatedAt           time.Time `json:"created_at"`
+	ID                   string    `json:"id"`
+	ServiceID            string    `json:"service_id"`
+	ServiceName          string    `json:"service_name"`
+	Name                 string    `json:"name"`
+	Description          string    `json:"description"`
+	TargetPercentage     float64   `json:"target_percentage"`
+	WindowDays           int       `json:"window_days"`
+	SLIType              string    `json:"sli_type"`
+	Query                string    `json:"query"`
+	CurrentPercentage    float64   `json:"current_percentage"`
+	ErrorBudgetRemaining float64   `json:"error_budget_remaining"`
+	Status               string    `json:"status"`
+	LastCalculatedAt     time.Time `json:"last_calculated_at"`
+	CreatedAt            time.Time `json:"created_at"`
 }
 
 type SLOBurnRate struct {
@@ -61,7 +62,7 @@ func (s *SLOService) CalculateSLO(ctx context.Context, sloID string) (*SLO, erro
 
 	// Calculate time window
 	end := time.Now()
-	
+
 	// FIXED: Replace ${WINDOW} placeholder with the SLO window (e.g. 30d)
 	// This ensures the query respects the WindowDays set in the database.
 	window := fmt.Sprintf("%dd", slo.WindowDays)
@@ -91,7 +92,7 @@ func (s *SLOService) CalculateSLO(ctx context.Context, sloID string) (*SLO, erro
 	// Calculate error budget - FIXED: Robust calculation with overspend tracking
 	errorBudgetAllowed := 100.0 - slo.TargetPercentage
 	errorsObserved := 100.0 - currentPercentage
-	
+
 	var errorBudgetRemaining float64
 	if errorBudgetAllowed <= 0 {
 		errorBudgetRemaining = 0 // Target is 100%, no room for error
@@ -202,7 +203,7 @@ func (s *SLOService) GetSLOHistory(ctx context.Context, sloID string) ([]map[str
 // GetSLO retrieves an SLO by ID
 func (s *SLOService) GetSLO(ctx context.Context, sloID string) (*SLO, error) {
 	var slo SLO
-	
+
 	query := `
 		SELECT s.id, s.service_id, sv.name as service_name, s.name, s.description,
 		       s.target_percentage, s.window_days, s.sli_type, s.query,
@@ -310,8 +311,8 @@ func (s *SLOService) CalculateBurnRate(ctx context.Context, sloID string) ([]SLO
 	}
 
 	windows := []struct {
-		name     string
-		duration time.Duration
+		name      string
+		duration  time.Duration
 		threshold float64
 	}{
 		{"1h", time.Hour, 14.4},      // 1 hour window
@@ -325,7 +326,7 @@ func (s *SLOService) CalculateBurnRate(ctx context.Context, sloID string) ([]SLO
 
 	for _, window := range windows {
 		_ = end.Add(-window.duration) // start variable unused
-		
+
 		// Query error budget consumption rate
 		query := fmt.Sprintf(`
 			(1 - (%s)) / (1 - (%f / 100))

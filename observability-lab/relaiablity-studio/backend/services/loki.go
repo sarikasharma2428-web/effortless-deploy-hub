@@ -16,4 +16,3 @@ func QueryLogs(query string) string {
 	body, _ := io.ReadAll(resp.Body)
 	return string(body)
 }
-

@@ -190,9 +190,9 @@ func SecurityHeadersMiddleware(next http.Handler) http.Handler {
 // ==================== ACCOUNT LOCKOUT ====================
 
 type AccountLockout struct {
-	mu         sync.RWMutex
-	attempts   map[string][]time.Time
-	maxAttempts int
+	mu           sync.RWMutex
+	attempts     map[string][]time.Time
+	maxAttempts  int
 	lockDuration time.Duration
 }
 

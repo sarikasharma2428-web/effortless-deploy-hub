@@ -129,7 +129,7 @@ func (l *LokiClient) QueryLogs(ctx context.Context, query string, start, end tim
 // GetErrorLogs retrieves error logs for a service
 func (l *LokiClient) GetErrorLogs(ctx context.Context, service string, since time.Time, limit int) ([]LogEntry, error) {
 	query := fmt.Sprintf(`{app="%s"} |= "error" or |= "ERROR" or |= "exception" or |~ "(?i)error"`, service)
-	
+
 	end := time.Now()
 	start := since
 	if start.IsZero() {
@@ -142,7 +142,7 @@ func (l *LokiClient) GetErrorLogs(ctx context.Context, service string, since tim
 // GetServiceLogs retrieves all logs for a service
 func (l *LokiClient) GetServiceLogs(ctx context.Context, service string, since time.Time, limit int) ([]LogEntry, error) {
 	query := fmt.Sprintf(`{app="%s"}`, service)
-	
+
 	end := time.Now()
 	start := since
 	if start.IsZero() {
@@ -155,7 +155,7 @@ func (l *LokiClient) GetServiceLogs(ctx context.Context, service string, since t
 // SearchLogs searches for specific text in logs
 func (l *LokiClient) SearchLogs(ctx context.Context, service, searchText string, since time.Time, limit int) ([]LogEntry, error) {
 	query := fmt.Sprintf(`{app="%s"} |= "%s"`, service, searchText)
-	
+
 	end := time.Now()
 	start := since
 	if start.IsZero() {
@@ -177,7 +177,7 @@ func (l *LokiClient) GetLogStats(ctx context.Context, service string, window tim
 
 	for _, level := range levels {
 		query := fmt.Sprintf(`count_over_time({app="%s", level="%s"}[%s])`, service, level, formatDuration(window))
-		
+
 		params := url.Values{}
 		params.Add("query", query)
 		params.Add("time", fmt.Sprintf("%d", end.Unix()))
@@ -247,7 +247,7 @@ func (l *LokiClient) GetLogsByTimeRange(ctx context.Context, service string, sta
 // GetCriticalLogs gets critical/fatal level logs
 func (l *LokiClient) GetCriticalLogs(ctx context.Context, service string, since time.Time) ([]LogEntry, error) {
 	query := fmt.Sprintf(`{app="%s"} |= "critical" or |= "CRITICAL" or |= "fatal" or |= "FATAL"`, service)
-	
+
 	end := time.Now()
 	if since.IsZero() {
 		since = end.Add(-1 * time.Hour)
@@ -259,7 +259,7 @@ func (l *LokiClient) GetCriticalLogs(ctx context.Context, service string, since 
 // StreamLogs streams logs in real-time (WebSocket-like behavior)
 func (l *LokiClient) StreamLogs(ctx context.Context, service string, callback func(LogEntry)) error {
 	query := fmt.Sprintf(`{app="%s"}`, service)
-	
+
 	// Poll for new logs every 5 seconds
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
@@ -289,7 +289,7 @@ func (l *LokiClient) StreamLogs(ctx context.Context, service string, callback fu
 // Health checks Loki health
 func (l *LokiClient) Health(ctx context.Context) error {
 	url := fmt.Sprintf("%s/ready", l.baseURL)
-	
+
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return err
