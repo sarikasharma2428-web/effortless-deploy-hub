@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
 	_ "github.com/lib/pq"
 )
 
@@ -229,12 +230,17 @@ func SeedDefaultData(db *sql.DB) error {
 		}
 	}
 
-	// Insert default admin user
+	// Insert default admin user - FIXED: Use parameterized query and real bcrypt hash
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("admin-password"), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash admin password: %w", err)
+	}
+
 	_, err = db.Exec(`
 		INSERT INTO users (email, username, password_hash, roles)
-		VALUES ('admin@reliability.io', 'admin', '$2a$10$rZ1qJ8Z5X7X7X7X7X7X7X7', '["admin", "editor", "viewer"]'::jsonb)
+		VALUES ($1, $2, $3, $4::jsonb)
 		ON CONFLICT (email) DO NOTHING
-	`)
+	`, "admin@reliability.io", "admin", string(hashedPassword), `["admin", "editor", "viewer"]`)
 	
 	if err != nil {
 		return fmt.Errorf("failed to seed admin user: %w", err)
@@ -250,7 +256,7 @@ func SeedDefaultData(db *sql.DB) error {
 				VALUES ($1, $2, $3, $4, $5, $6, $7)
 				ON CONFLICT (service_id, name) DO NOTHING
 			`, serviceID, "Availability", "Percentage of successful requests", 99.9, 30, "availability", 
-			   fmt.Sprintf(`sum(rate(http_requests_total{service="%s",status!~"5.."}[5m])) / sum(rate(http_requests_total{service="%s"}[5m])) * 100`, svcName, svcName))
+			   fmt.Sprintf(`sum(rate(http_requests_total{service="%s",status!~"5.."}[${WINDOW}])) / sum(rate(http_requests_total{service="%s"}[${WINDOW}])) * 100`, svcName, svcName))
 		}
 	}
 

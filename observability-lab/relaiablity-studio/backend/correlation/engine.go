@@ -73,42 +73,73 @@ func (e *CorrelationEngine) CorrelateIncident(ctx context.Context, incidentID, s
 		StartTime: startTime,
 	}
 
-	// Run correlations - FIXED: Now logging errors for better observability
+	// Run correlations - FIXED: Now logging warnings instead of errors for optional components
 	if err := e.correlateK8sState(ctx, ic); err != nil {
-		fmt.Printf("Error correlating K8s state: %v\n", err)
+		fmt.Printf("Warning: Failed to correlate K8s state: %v\n", err)
 	}
 	if err := e.correlateMetrics(ctx, ic); err != nil {
-		fmt.Printf("Error correlating metrics: %v\n", err)
+		fmt.Printf("Warning: Failed to correlate metrics: %v\n", err)
 	}
 	if err := e.correlateLogs(ctx, ic); err != nil {
-		fmt.Printf("Error correlating logs: %v\n", err)
+		fmt.Printf("Warning: Failed to correlate logs: %v\n", err)
 	}
 	if err := e.analyzeRootCause(ctx, ic); err != nil {
-		fmt.Printf("Error analyzing root cause: %v\n", err)
+		fmt.Printf("Warning: Failed to analyze root cause: %v\n", err)
 	}
 
 	// Save correlations to database
 	if err := e.saveCorrelations(ctx, incidentID, ic); err != nil {
-		fmt.Printf("Error saving correlations: %v\n", err)
+		return ic, fmt.Errorf("failed to save correlations: %w", err)
 	}
 
 	return ic, nil
 }
 
 func (e *CorrelationEngine) correlateK8sState(ctx context.Context, ic *IncidentContext) error {
-	// FIXED: Check if k8sClient is nil before using it
+	// ✅ FIX: Check if k8sClient is available
 	if e.k8sClient == nil {
-		return nil // Skip Kubernetes correlation if client is unavailable
+		fmt.Println("Debug: Kubernetes client is not available, skipping K8s correlation")
+		// Add entry to show availability status in UI as per acceptance criteria
+		ic.Correlations = append(ic.Correlations, Correlation{
+			Type:            "status",
+			SourceType:      "kubernetes",
+			SourceID:        "client",
+			ConfidenceScore: 1.0,
+			Details: map[string]interface{}{
+				"status": "not available",
+				"message": "Kubernetes integration not configured",
+			},
+		})
+		return nil
 	}
 	
 	pods, err := e.k8sClient.GetPods(ctx, ic.Namespace, ic.Service)
 	if err == nil {
 		ic.AffectedPods = pods
+		
+		// Add K8s correlations if pods are unhealthy
+		for _, pod := range pods {
+			if pod.Status != "Running" {
+				ic.Correlations = append(ic.Correlations, Correlation{
+					Type:            "infrastructure",
+					SourceType:      "kubernetes",
+					SourceID:        pod.Name,
+					ConfidenceScore: 0.95,
+					Details: map[string]interface{}{
+						"status": pod.Status,
+						"reason": "Pod unhealthy",
+					},
+				})
+			}
+		}
 	}
 	return nil
 }
 
 func (e *CorrelationEngine) correlateMetrics(ctx context.Context, ic *IncidentContext) error {
+	if e.promClient == nil {
+		return nil
+	}
 	ic.Metrics = make(map[string]float64)
 	
 	errorRate, err := e.promClient.GetErrorRate(ctx, ic.Service)
@@ -150,6 +181,9 @@ func (e *CorrelationEngine) correlateMetrics(ctx context.Context, ic *IncidentCo
 }
 
 func (e *CorrelationEngine) correlateLogs(ctx context.Context, ic *IncidentContext) error {
+	if e.lokiClient == nil {
+		return nil
+	}
 	// Detect log patterns
 	patterns, err := e.lokiClient.DetectLogPatterns(ctx, ic.Service, ic.StartTime.Add(-10*time.Minute))
 	if err == nil {

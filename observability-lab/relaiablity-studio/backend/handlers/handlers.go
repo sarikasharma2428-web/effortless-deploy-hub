@@ -243,7 +243,7 @@ func GetServiceIncidents(w http.ResponseWriter, r *http.Request) {
 // --- SLO Handlers ---
 
 func ListSLOs(w http.ResponseWriter, r *http.Request) {
-    slos, err := sloService.GetAll(r.Context())
+    slos, err := sloService.GetAllSLOs(r.Context())
     if err != nil {
         logger.Error("Failed to list SLOs", zap.Error(err))
         http.Error(w, "Failed to retrieve SLOs", http.StatusInternalServerError)
@@ -255,14 +255,13 @@ func ListSLOs(w http.ResponseWriter, r *http.Request) {
 }
 
 func CreateSLO(w http.ResponseWriter, r *http.Request) {
-    var req services.CreateSLORequest
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+    var slo services.SLO
+    if err := json.NewDecoder(r.Body).Decode(&slo); err != nil {
         http.Error(w, "Invalid request body", http.StatusBadRequest)
         return
     }
     
-    slo, err := sloService.Create(r.Context(), req)
-    if err != nil {
+    if err := sloService.CreateSLO(r.Context(), &slo); err != nil {
         logger.Error("Failed to create SLO", zap.Error(err))
         http.Error(w, "Failed to create SLO", http.StatusInternalServerError)
         return
@@ -277,7 +276,7 @@ func GetSLO(w http.ResponseWriter, r *http.Request) {
     vars := mux.Vars(r)
     id := vars["id"]
     
-    slo, err := sloService.GetByID(r.Context(), id)
+    slo, err := sloService.GetSLO(r.Context(), id)
     if err != nil {
         logger.Error("Failed to get SLO", zap.Error(err))
         http.Error(w, "Failed to retrieve SLO", http.StatusInternalServerError)
@@ -390,14 +389,14 @@ func UpdateSLO(w http.ResponseWriter, r *http.Request) {
     vars := mux.Vars(r)
     id := vars["id"]
     
-    var req services.UpdateSLORequest
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+    var slo services.SLO
+    if err := json.NewDecoder(r.Body).Decode(&slo); err != nil {
         http.Error(w, "Invalid request body", http.StatusBadRequest)
         return
     }
+    slo.ID = id
     
-    slo, err := sloService.Update(r.Context(), id, req)
-    if err != nil {
+    if err := sloService.UpdateSLO(r.Context(), &slo); err != nil {
         logger.Error("Failed to update SLO", zap.Error(err))
         http.Error(w, "Failed to update SLO", http.StatusInternalServerError)
         return

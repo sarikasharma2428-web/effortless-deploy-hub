@@ -11,7 +11,7 @@ async function apiFetch<T>(endpoint: string, options: FetchOptions = {}): Promis
   const { body, ...customConfig } = options;
   const headers = {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${(window as any).AUTH_TOKEN || 'mock-token-123'}`,
+    'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
     ...customConfig.headers,
   };
 

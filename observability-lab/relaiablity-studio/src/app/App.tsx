@@ -324,7 +324,7 @@ const Login: React.FC<{ onLogin: (token: string, user: any) => void }> = ({ onLo
     setLoading(true);
     setError('');
     try {
-      const response = await fetch('http://localhost:9000/api/login', {
+      const response = await fetch('http://localhost:9000/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),

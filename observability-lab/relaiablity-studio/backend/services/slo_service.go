@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 	"github.com/sarikasharma2428-web/reliability-studio/clients"
 )
@@ -60,11 +61,14 @@ func (s *SLOService) CalculateSLO(ctx context.Context, sloID string) (*SLO, erro
 
 	// Calculate time window
 	end := time.Now()
-	// start := end.Add(-time.Duration(slo.WindowDays) * 24 * time.Hour) 
-	// For instant query, we use the end time of the window
+	
+	// FIXED: Replace ${WINDOW} placeholder with the SLO window (e.g. 30d)
+	// This ensures the query respects the WindowDays set in the database.
+	window := fmt.Sprintf("%dd", slo.WindowDays)
+	query := strings.ReplaceAll(slo.Query, "${WINDOW}", window)
 
 	// Execute Prometheus query
-	result, err := s.promClient.Query(ctx, slo.Query, end)
+	result, err := s.promClient.Query(ctx, query, end)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute SLO query: %w", err)
 	}
@@ -84,19 +88,24 @@ func (s *SLOService) CalculateSLO(ctx context.Context, sloID string) (*SLO, erro
 		return nil, fmt.Errorf("failed to parse SLO value: %w", err)
 	}
 
-	// Calculate error budget
-	errorBudgetTotal := 100.0 - slo.TargetPercentage
-	errorBudgetUsed := 100.0 - currentPercentage
-	errorBudgetRemaining := ((errorBudgetTotal - errorBudgetUsed) / errorBudgetTotal) * 100
+	// Calculate error budget - FIXED: Robust calculation with overspend tracking
+	errorBudgetAllowed := 100.0 - slo.TargetPercentage
+	errorsObserved := 100.0 - currentPercentage
+	
+	var errorBudgetRemaining float64
+	if errorBudgetAllowed <= 0 {
+		errorBudgetRemaining = 0 // Target is 100%, no room for error
+	} else {
+		// Can be negative if overspent (e.g. -400% for 99.5% vs 99.9% target)
+		errorBudgetRemaining = ((errorBudgetAllowed - errorsObserved) / errorBudgetAllowed) * 100
+	}
 
-	// Determine status
+	// Determine status based on remaining budget
 	status := "healthy"
-	if currentPercentage < slo.TargetPercentage {
-		if errorBudgetRemaining < 25 {
-			status = "critical"
-		} else if errorBudgetRemaining < 50 {
-			status = "warning"
-		}
+	if errorBudgetRemaining < 25 {
+		status = "critical"
+	} else if errorBudgetRemaining < 50 {
+		status = "warning"
 	}
 
 	// Update SLO in database

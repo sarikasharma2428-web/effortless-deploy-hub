@@ -9,10 +9,12 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"strings"
 	"time"
-
+	
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
+	_ "net/http/pprof"
 	
 	"github.com/sarikasharma2428-web/reliability-studio/clients"
 	"github.com/sarikasharma2428-web/reliability-studio/correlation"
@@ -62,17 +64,21 @@ func main() {
 	promClient := clients.NewPrometheusClient(promURL)
 	lokiClient := clients.NewLokiClient(lokiURL)
 	
+	// Initialize K8s client - FIXED: Handle typed-nil issue for interfaces
+	var k8sInterface correlation.KubernetesClient
 	k8sClient, err := clients.NewKubernetesClient()
 	if err != nil {
 		log.Printf("Warning: Failed to initialize K8s client: %v", err)
-		k8sClient = nil // Optional: continue without K8s
+		k8sClient = nil // Pointer is nil
+	} else {
+		k8sInterface = k8sClient // Interface is populated
 	}
 
 	// Initialize services
 	log.Println("⚙️  Initializing services...")
 	sloService := services.NewSLOService(db, promClient)
 	timelineService := services.NewTimelineService(db)
-	correlationEngine := correlation.NewCorrelationEngine(db, promClient, k8sClient, lokiClient)
+	correlationEngine := correlation.NewCorrelationEngine(db, promClient, k8sInterface, lokiClient)
 
 	// Create server
 	server := &Server{
@@ -141,13 +147,29 @@ func main() {
 	admin.HandleFunc("/users", server.getUsersHandler).Methods("GET")
 	admin.HandleFunc("/services", server.getServicesHandler).Methods("GET")
 
-	// CORS
+	// CORS configuration - FIXED: Restricted origins and secure headers
+	allowedOrigins := []string{"http://localhost:3000", "http://localhost:4000"}
+	if prodOrigins := os.Getenv("CORS_ALLOWED_ORIGINS"); prodOrigins != "" {
+		allowedOrigins = strings.Split(prodOrigins, ",")
+	}
+
 	corsHandler := cors.New(cors.Options{
-		AllowedOrigins:   []string{"*"},
+		AllowedOrigins:   allowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Content-Type", "Authorization"},
 		AllowCredentials: true,
+		MaxAge:           300,
 	})
+
+	// Optional: PProf for performance debugging
+	if os.Getenv("ENABLE_PPROF") == "true" {
+		go func() {
+			log.Println("🩺 Starting pprof on :6060")
+			if err := http.ListenAndServe(":6060", nil); err != nil {
+				log.Printf("PProf failed: %v", err)
+			}
+		}()
+	}
 
 	// Start background jobs with context
 	ctx, cancelBackgroundJobs := context.WithCancel(context.Background())
